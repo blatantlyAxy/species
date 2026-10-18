@@ -118,7 +118,7 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
   }
 
   const report: DebriefReport = {
-    end, turns: run.age, payout, levelBefore, levelAfter: acc.level, newPerks, famChanges,
+    species, end, turns: run.age, payout, levelBefore, levelAfter: acc.level, newPerks, famChanges,
     masteryBefore, masteryAfter, unlocks, traitTierUps, notes,
   };
   return { account: acc, report };

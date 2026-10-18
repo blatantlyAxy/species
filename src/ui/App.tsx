@@ -107,6 +107,7 @@ export function App() {
     if (!run || !run.ended) return;
     const res = finishRun(account, run);
     setAccount(res.account);
+    setSpecies(run.species);
     setReport(res.report);
     setRun(null);
     setScreen('debrief');
@@ -126,7 +127,7 @@ export function App() {
     <div className="console">
       {screen === 'menu' && (
         <Menu account={account} hasRun={!!run && !run.ended} hasEnded={!!run?.ended}
-          onContinue={() => setScreen('play')} onStart={goSelect}
+          onContinue={() => { if (run) setSpecies(run.species); setScreen('play'); }} onStart={goSelect}
           onCodex={() => setScreen('codex')} onAccount={() => setScreen('account')} onReset={resetAll} eraseArmed={eraseArmed} />
       )}
       {screen === 'select' && <Select account={account} onPick={choose} onBack={() => setScreen('menu')} />}
@@ -143,8 +144,8 @@ export function App() {
         <Play account={account} run={run} onRun={setRun} onFinish={finish} onMenu={() => setScreen('menu')} />
       )}
       {screen === 'debrief' && report && (
-        <Debrief report={report} species={species} account={account}
-          onAgain={() => choose(species)} onMenu={() => setScreen('menu')} />
+        <Debrief report={report} species={report.species} account={account}
+          onAgain={() => choose(report.species)} onMenu={() => setScreen('menu')} />
       )}
       {screen === 'codex' && <Codex account={account} onBack={() => setScreen('menu')} />}
       {screen === 'account' && <AccountScreen account={account} onBack={() => setScreen('menu')} />}

@@ -31,7 +31,7 @@ console.log('feedback ok');
 {
   const { CrashScreen, buildCrashReport } = await import('../src/ui/Support');
   const r = buildCrashReport(new Error('boom'));
-  if (!r.includes('boom') || !r.includes('Version 0.4.0')) throw new Error('bad crash report');
+  if (!r.includes('boom') || !r.includes('Version 0.4.1')) throw new Error('bad crash report');
   const d2 = document.createElement('div'); document.body.appendChild(d2);
   const r2 = createRoot(d2);
   await act(async () => { r2.render(React.createElement(CrashScreen, { error: new Error('boom'), onDiscardRun: () => {} })); });

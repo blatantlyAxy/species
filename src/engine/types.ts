@@ -242,6 +242,7 @@ export interface PayoutBreakdown {
 }
 
 export interface DebriefReport {
+  species: SpeciesId;
   end: RunEnd;
   turns: number;
   payout: PayoutBreakdown;
