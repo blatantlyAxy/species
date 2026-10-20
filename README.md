@@ -3,6 +3,8 @@
 A turn-based evolution game. Live one animal's life at a time, die often, come back stranger.
 This is the text-sim prototype described in the Evolution Game design doc.
 
+New to the game's terms (Gene Points, heirloom traits, birth luck, visibility tiers and so on)? See [GLOSSARY.md](GLOSSARY.md).
+
 ## Run it
 
 ```bash
