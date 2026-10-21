@@ -1,12 +1,12 @@
 import { Feedback, VersionFooter } from './Support';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CODEX_NOTES, PERKS, SPECIES, STAT_FLOOR, STATS, STAT_LABEL, TIER2_USES, TRAITS, TRAIT_IDS, MASTERY_STEPS,
   act, birthRows, createAccount, finishRun, getView, masteryLevel, rollBirth, startRun, statUpkeep, traitSlots, upkeepOf, xpForLevel,
 } from '../engine';
 import type {
-  Account, Action, BirthRoll, CodexId, DebriefReport, RunState, Snap, SpeciesId, Stat, TraitId, TurnReport,
+  Account, Action, BirthRoll, CodexId, DebriefReport, RunState, RunView, Snap, SpeciesId, Stat, TraitId, TurnReport,
 } from '../engine';
 
 type Screen = 'feedback' | 'menu' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account';
@@ -483,27 +483,44 @@ function isNotable(r: TurnReport, ended: RunState['ended']): boolean {
   return !!r.threat || !!ended || r.afterArrival.hp < r.before.hp;
 }
 
-function ReportBody(p: { r: TurnReport; ended: RunState['ended'] }) {
+/** Result of the action you took: heading, verdict, what happened, and the stat changes. */
+function ResultBlock(p: { r: TurnReport; hideHead?: boolean }) {
   const { r } = p;
   return (
-    <div className="report">
-      <div className="rhead">{r.turn === 0 ? 'Birth luck' : `Turn ${r.turn}: ${r.action}`}</div>
+    <>
+      {!p.hideHead && <div className="rhead">{r.turn === 0 ? 'Birth luck' : `Turn ${r.turn}: ${r.action}`}</div>}
       {r.threat && (
         <div className={`verdict ${r.threat.outcome}`}>
           {PRED_EMOJI[r.threat.pred]} {r.threat.name}:{' '}
-          {r.threat.outcome === 'safe' ? 'you got away unharmed' : r.threat.outcome === 'hurt' ? 'you were hurt' : 'you did not survive'}
+          {r.threat.outcome === 'safe' ? 'you came through unharmed' : r.threat.outcome === 'hurt' ? 'you were hurt' : 'you did not survive'}
         </div>
       )}
       {r.resolve.map((l, i) => <div key={`r${i}`} className="rl">{l}</div>)}
       {r.turn > 0 && <Chips a={r.before} b={r.afterAction} />}
-      {!p.ended && r.arrival.length > 0 && (
-        <>
-          <div className="rhead next">{r.turn === 0 ? 'The first moments' : `Turn ${r.turn + 1} begins`}</div>
-          {r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}
-          <Chips a={r.afterAction} b={r.afterArrival} hpCause={[...new Set((r.envHits ?? []).map((h) => h.chip))].join(', ') || undefined} />
-        </>
-      )}
-      {p.ended && r.arrival.length > 0 && r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}
+    </>
+  );
+}
+
+/** What the next turn opened with: upkeep, the new event, and what it cost you. */
+function ArrivalBlock(p: { r: TurnReport; ended: RunState['ended']; head: 'now' | 'next' }) {
+  const { r } = p;
+  if (!r.arrival.length) return null;
+  if (p.ended) return <>{r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}</>;
+  return (
+    <>
+      <div className={`rhead ${p.head}`}>{r.turn === 0 ? 'The first moments' : `Turn ${r.turn + 1} begins`}</div>
+      {r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}
+      <Chips a={r.afterAction} b={r.afterArrival} hpCause={[...new Set((r.envHits ?? []).map((h) => h.chip))].join(', ') || undefined} />
+    </>
+  );
+}
+
+/** Both halves in the order they happened. Used on the flashcard, which is read once. */
+function ReportBody(p: { r: TurnReport; ended: RunState['ended']; hideHead?: boolean }) {
+  return (
+    <div className="report">
+      <ResultBlock r={p.r} hideHead={p.hideHead} />
+      <ArrivalBlock r={p.r} ended={p.ended} head="next" />
     </div>
   );
 }
@@ -540,23 +557,171 @@ function UnlockFlash(p: { species: NonNullable<DebriefReport['newSpecies']>; onC
   );
 }
 
+// ---- the Play screen is five panels: Environment, Turn log, Meters, Surroundings, Actions ----
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+const CARD_AUTO_MS = 1000; // a quiet card fades up by itself after this long
+const CARD_LEAVE_MS = 340; // time the card takes to fade up into the log
+
+/** Older turns, newest first, each as a whole group. The latest turn is shown above them, so it is dropped here. */
+function earlierTurns(history: string[], max = 3): { label: string; lines: string[] }[] {
+  const chunks: { label: string; lines: string[] }[] = [];
+  let cur: { label: string; lines: string[] } | null = null;
+  for (const l of history) {
+    const m = /^— Turn (\d+) —$/.exec(l);
+    if (m) { cur = { label: `Turn ${m[1]}`, lines: [] }; chunks.push(cur); }
+    else {
+      if (!cur) { cur = { label: 'Birth', lines: [] }; chunks.push(cur); }
+      cur.lines.push(l);
+    }
+  }
+  return chunks.slice(0, -1).reverse().slice(0, max);
+}
+
+function EnvironmentPanel(p: { run: RunState; view: RunView }) {
+  const { run, view } = p;
+  const def = SPECIES[run.species];
+  const ev = view.event;
+  const rep = run.report;
+  return (
+    <div className={`scene ${view.biome}`} data-panel="environment">
+      <div className="topline">
+        <span>{view.seasonName} &middot; Turn {view.turn}/{view.maxTurns}</span>
+        <span>{view.stage}</span>
+      </div>
+      <div className="place">{view.locName}</div>
+      <div className="small" style={{ opacity: 0.85 }}>{view.blurb}</div>
+      <div className="sprites">
+        <span className="sprite">{def.emoji}</span>
+        {ev?.kind === 'threat' && ev.pred && <span className="sprite foe">{PRED_EMOJI[ev.pred]}</span>}
+        {run.species === 'deer' && <span className="sprite small">{'🦌'.repeat(Math.min(3, Math.max(0, view.herd! - 1)))}</span>}
+        {run.species === 'mouse' && view.nest && <span className="sprite small">🪺</span>}
+      </div>
+      {ev && (
+        <div className={`eventbox ${ev.kind}`}>
+          {rep?.newEvent === ev.name && <span className="newtag">NEW THIS TURN</span>}
+          <b>{ev.name}.</b> {ev.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Newest first: the turn that just began, then the result of your last action, then older turns. */
+function TurnLogPanel(p: { run: RunState }) {
+  const { run } = p;
+  const rep = run.report;
+  const tone = rep ? reportTone(rep, run.ended) : 'plain';
+  const earlier = earlierTurns(run.history);
+  return (
+    <div className={`log tone-${tone}`} data-panel="turn-log">
+      {rep && (
+        <div className="report">
+          <div key={run.turnsTaken} className="fresh">
+            <ArrivalBlock r={rep} ended={run.ended} head="now" />
+          </div>
+          <div className="prevturn"><ResultBlock r={rep} /></div>
+        </div>
+      )}
+      {earlier.length > 0 && <div className="olderhead">Earlier</div>}
+      {earlier.map((c, i) => (
+        <div key={`${c.label}${i}`} className="oldturn">
+          <div className="oldlabel">{c.label}</div>
+          {c.lines.map((l, j) => <div key={j} className="old">{l}</div>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetersPanel(p: { view: RunView }) {
+  const { view } = p;
+  return (
+    <div data-panel="meters">
+      <div className="hud">
+        <Bar cls="hp" label="Health" value={view.hp} max={view.maxHp} />
+        <Bar cls="hun" label="Hunger" value={100 - view.satiety} max={100} />
+        <Bar cls="en" label="Energy" value={view.energy} max={100} />
+        <Bar cls="safe" label="Safety" value={view.safety} max={100} />
+      </div>
+      <div className="stats">
+        {STATS.map((s) => <span key={s}>{STAT_LABEL[s].slice(0, 3)} <b>{view.stats[s]}</b></span>)}
+      </div>
+      <div className="goal">Goal: {view.goalLine}{view.nest ? ` Nest: ${view.nest.pups} pups, ${view.nest.turnsLeft} turns to wean.` : ''}</div>
+    </div>
+  );
+}
+
+function SurroundingsPanel(p: { view: RunView }) {
+  const { view } = p;
+  return (
+    <div className="look" data-panel="surroundings">
+      <span className="dim">{view.foodHere}. <span title="How much you can see about nearby places">Sight: tier {view.tier} of 3.</span></span>
+      <div className="nb">
+        {view.neighbours.map((n) => (
+          <span key={n.id}>
+            {n.name}
+            {n.danger && <> <span className={n.danger}>[{n.danger}]</span></>}
+            {n.food && <> food {n.food}</>}
+            {n.prey && <> deer {n.prey}</>}
+            {n.predators && n.predators.length > 0 && <> ({n.predators.join(', ')})</>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The result of the action you just took. It sits where the buttons are, then fades up into the Turn log. */
+function Flashcard(p: { run: RunState; hold: boolean; leaving: boolean; onDismiss: () => void }) {
+  const rep = p.run.report!;
+  const tone = reportTone(rep, p.run.ended);
+  const title =
+    tone === 'gold' ? 'Victory'
+      : tone === 'bad' ? (p.run.ended ? 'Life over' : 'That hurt')
+        : tone === 'good' ? 'Close call, survived'
+          : tone === 'warn' ? worldHeading(rep)
+            : rep.action;
+  return (
+    <div className={`flashcard ${tone} ${p.leaving ? 'leaving' : ''}`} role="button" tabIndex={0}
+      aria-label="Result of your action. Press Enter to continue." onClick={p.onDismiss}>
+      <div className="flashtitle">{title}</div>
+      <ReportBody r={rep} ended={p.run.ended} hideHead={tone === 'plain'} />
+      {p.hold
+        ? <div className="cardhint small dim">{p.run.ended ? 'Tap or press Enter to continue' : `Tap or press Enter to continue to turn ${rep.turn + 1}`}</div>
+        : <div className="cardtimer" style={{ animationDuration: `${CARD_AUTO_MS}ms` }} />}
+    </div>
+  );
+}
+
 function Play(p: {
   account: Account; run: RunState; onRun: (r: RunState) => void; onFinish: () => void; onMenu: () => void;
 }) {
   const { run } = p;
   const view = useMemo(() => getView(run), [run]);
   const [picking, setPicking] = useState<Action | null>(null);
-  const def = SPECIES[run.species];
-  const ev = view.event;
   const rep = run.report;
   const [acked, setAcked] = useState(run.turnsTaken);
-  const flash = !!rep && rep.turn > 0 && acked < run.turnsTaken && isNotable(rep, run.ended);
-  const tone = rep ? reportTone(rep, run.ended) : 'plain';
+  // The run as it was before your last action. The Environment, Turn log, Meters and Surroundings
+  // panels keep showing it while the flashcard is up, so the card lands before the new turn does.
+  const [held, setHeld] = useState<RunState | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [cardH, setCardH] = useState(0);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cardPending = !!rep && rep.turn > 0 && acked < run.turnsTaken;
+  const hold = !!rep && isNotable(rep, run.ended); // hurt, threat, death and victory wait for you
+  const shown = cardPending && held ? held : run;
+  const shownView = useMemo(() => getView(shown), [shown]);
 
   const doAct = useCallback((id: string, target?: string) => {
     setPicking(null);
-    const next = act(run, id, target);
-    p.onRun(next);
+    setCardH(actionsRef.current?.offsetHeight ?? 0);
+    setHeld(run);
+    p.onRun(act(run, id, target));
   }, [run, p]);
 
   const choose = useCallback((a: Action) => {
@@ -565,10 +730,38 @@ function Play(p: {
     else doAct(a.id);
   }, [doAct]);
 
+  /** Fade the card up into the Turn log. The panels show the new turn as the card leaves. */
+  const dismiss = useCallback((instant = false) => {
+    if (!cardPending || leaving) return;
+    setHeld(null);
+    if (instant || prefersReducedMotion()) { setAcked(run.turnsTaken); return; }
+    setLeaving(true);
+    leaveTimer.current = setTimeout(() => { setLeaving(false); setAcked(run.turnsTaken); }, CARD_LEAVE_MS);
+  }, [cardPending, leaving, run.turnsTaken]);
+
+  useEffect(() => () => { if (leaveTimer.current) clearTimeout(leaveTimer.current); }, []);
+
+  // quiet cards fade up by themselves
+  useEffect(() => {
+    if (!cardPending || hold || leaving) return;
+    const t = setTimeout(() => dismiss(), CARD_AUTO_MS);
+    return () => clearTimeout(t);
+  }, [cardPending, hold, leaving, dismiss]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (flash) {
-        if (e.key === 'Enter' || e.key === ' ' || /^[1-9]$/.test(e.key)) { e.preventDefault(); setAcked(run.turnsTaken); }
+      if (cardPending) {
+        if (leaving) return;
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
+        if (/^[1-9]$/.test(e.key)) {
+          e.preventDefault();
+          // A number key skips the card and also picks that action, but only after a calm turn.
+          // Anything else (a threat, a hurt, an ending) would be choosing blind, so the key just dismisses.
+          const calm = !hold && !run.ended && run.event?.kind !== 'threat';
+          const a = view.actions[Number(e.key) - 1];
+          dismiss(true);
+          if (calm && a && !a.disabled && !a.targets) setTimeout(() => doAct(a.id), 0);
+        }
         return;
       }
       if (run.ended) return;
@@ -585,79 +778,23 @@ function Play(p: {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [run.ended, run.turnsTaken, flash, picking, view.actions, choose, doAct]);
-
-  const older = run.history.slice(0, Math.max(0, run.history.length - (rep ? rep.resolve.length + rep.arrival.length + 1 : 0))).slice(-5);
-
-  if (flash && rep) {
-    return (
-      <FlashScreen tone={tone}
-        title={tone === 'gold' ? 'Victory' : tone === 'bad' ? (run.ended ? 'Life over' : 'That hurt') : tone === 'good' ? 'Close call, survived' : tone === 'warn' ? worldHeading(rep) : 'Result'}
-        button={<>{run.ended ? 'Continue' : `Continue to turn ${rep.turn + 1}`} <span className="dim">(Enter)</span></>}
-        onContinue={() => setAcked(run.turnsTaken)}>
-        <ReportBody r={rep} ended={run.ended} />
-      </FlashScreen>
-    );
-  }
+  }, [cardPending, leaving, hold, run.ended, run.event, picking, view.actions, choose, doAct, dismiss]);
 
   return (
     <>
       <div className="screen">
-        <div className={`scene ${view.biome}`}>
-          <div className="topline">
-            <span>{view.seasonName} &middot; Turn {view.turn}/{view.maxTurns}</span>
-            <span>{view.stage}</span>
-          </div>
-          <div className="place">{view.locName}</div>
-          <div className="small" style={{ opacity: 0.85 }}>{view.blurb}</div>
-          <div className="sprites">
-            <span className="sprite">{def.emoji}</span>
-            {ev?.kind === 'threat' && ev.pred && <span className="sprite foe">{PRED_EMOJI[ev.pred]}</span>}
-            {run.species === 'deer' && <span className="sprite small">{'🦌'.repeat(Math.min(3, Math.max(0, view.herd! - 1)))}</span>}
-            {run.species === 'mouse' && view.nest && <span className="sprite small">🪺</span>}
-          </div>
-          {ev && (
-            <div className={`eventbox ${ev.kind}`}>
-              {rep?.newEvent === ev.name && <span className="newtag">NEW THIS TURN</span>}
-              <b>{ev.name}.</b> {ev.text}
-            </div>
-          )}
-        </div>
-        <div className={`log tone-${tone}`}>
-          {rep && <ReportBody r={rep} ended={run.ended} />}
-          {older.length > 0 && <div className="olderhead">Earlier</div>}
-          {older.map((l, i) => <div key={`o${i}`} className="old">{l}</div>)}
-        </div>
+        <EnvironmentPanel run={shown} view={shownView} />
+        <TurnLogPanel run={shown} />
       </div>
 
       <div className="screen">
-        <div className="hud">
-          <Bar cls="hp" label="Health" value={view.hp} max={view.maxHp} />
-          <Bar cls="hun" label="Hunger" value={100 - view.satiety} max={100} />
-          <Bar cls="en" label="Energy" value={view.energy} max={100} />
-          <Bar cls="safe" label="Safety" value={view.safety} max={100} />
-        </div>
-        <div className="stats">
-          {STATS.map((s) => <span key={s}>{STAT_LABEL[s].slice(0, 3)} <b>{view.stats[s]}</b></span>)}
-        </div>
-        <div className="goal">Goal: {view.goalLine}{view.nest ? ` Nest: ${view.nest.pups} pups, ${view.nest.turnsLeft} turns to wean.` : ''}</div>
-        <div className="look">
-          <span className="dim">{view.foodHere}. <span title="How much you can see about nearby places">Sight: tier {view.tier} of 3.</span></span>
-          <div className="nb">
-            {view.neighbours.map((n) => (
-              <span key={n.id}>
-                {n.name}
-                {n.danger && <> <span className={n.danger}>[{n.danger}]</span></>}
-                {n.food && <> food {n.food}</>}
-                {n.prey && <> deer {n.prey}</>}
-                {n.predators && n.predators.length > 0 && <> ({n.predators.join(', ')})</>}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="actions">
-          {run.ended ? (
+        <MetersPanel view={shownView} />
+        <SurroundingsPanel view={shownView} />
+        <div className={`actions ${cardPending ? 'hascard' : ''}`} data-panel="actions" ref={actionsRef}
+          style={cardPending && cardH ? { height: cardH } : undefined}>
+          {cardPending ? (
+            <Flashcard run={run} hold={hold} leaving={leaving} onDismiss={() => dismiss()} />
+          ) : run.ended ? (
             <>
               <p style={{ margin: 0 }}><b>{run.ended.type === 'win' ? 'Victory.' : run.ended.type === 'old_age' ? 'A full life.' : 'Life over.'}</b> {run.ended.cause}</p>
               <button className="btn primary center" onClick={p.onFinish}>Your legacy</button>

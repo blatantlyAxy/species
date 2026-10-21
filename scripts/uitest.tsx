@@ -4,6 +4,17 @@ const g = globalThis as any;
 g.window = dom.window; g.document = dom.window.document; g.localStorage = dom.window.localStorage;
 g.HTMLElement = dom.window.HTMLElement; g.KeyboardEvent = dom.window.KeyboardEvent;
 g.IS_REACT_ACT_ENVIRONMENT = true;
+// Reduced motion is on for most of the run so cards dismiss instantly; one block below turns it off.
+g.__reduceMotion = true;
+dom.window.matchMedia = ((q: string) => ({
+  matches: g.__reduceMotion === true && q.includes('reduced-motion'), media: q,
+  addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+})) as any;
+// jsdom has no layout, so give the Actions panel a fixed height to check that the card keeps it.
+Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get() { return (this as HTMLElement).classList?.contains('actions') ? 300 : 0; },
+});
 g.confirm = () => true; g.alert = (m: string) => { throw new Error('alert: ' + m); };
 
 const React = await import('react');
@@ -77,7 +88,7 @@ for (const species of ['Field Mouse', 'Deer']) {
   }
   let steps = 0;
   while (steps++ < 200) {
-    const fl = document.querySelector('.flash button') as HTMLButtonElement | null;
+    const fl = document.querySelector('.flashcard') as HTMLElement | null;
     if (fl) { flashes++; await click(fl); continue; }
     if (document.body.textContent!.includes('Your legacy')) break;
     const acts = Array.from(document.querySelectorAll('.actions button')) as HTMLButtonElement[];
@@ -97,6 +108,102 @@ await clickText('Codex'); console.log('codex ok'); await clickText('Back');
 await clickText('Account'); console.log('account ok'); await clickText('Back');
 console.log('flash screens seen:', flashes);
 
+// flashcard: the result of each action sits in the Actions panel, then fades up into the Turn log
+{
+  const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
+  const turnText = () => q('[data-panel="environment"] .topline')!.textContent!;
+  const turnNo = () => Number(/Turn (\d+)\//.exec(turnText())![1]);
+  const live = () => (Array.from(document.querySelectorAll('[data-panel="actions"] button')) as HTMLButtonElement[])
+    .filter((b) => !b.disabled && !b.textContent!.startsWith('Cancel'));
+  const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  const key = (k: string) => act(async () => { window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: k })); });
+
+  await clickText('Begin');
+  await clickText('Field Mouse');
+  await clickText('Be born');
+  await clickText('Into the wild');
+  for (const panel of ['environment', 'turn-log', 'meters', 'surroundings', 'actions']) {
+    if (!q(`[data-panel="${panel}"]`)) throw new Error('missing panel: ' + panel);
+  }
+  if (turnNo() !== 1) throw new Error('should start on turn 1');
+  await click(live()[0]);
+  if (!q('.flashcard')) throw new Error('flashcard missing after an action');
+  if (q('[data-panel="actions"] > button')) throw new Error('buttons should be hidden under the card');
+  if (q('[data-panel="actions"]')!.style.height !== '300px') throw new Error('card must keep the Actions panel height');
+  if (turnNo() !== 1) throw new Error('Environment panel should hold the old turn while the card is up');
+  await key('Enter');
+  if (q('.flashcard')) throw new Error('Enter should dismiss the card');
+  if (turnNo() !== 2) throw new Error('new turn should show once the card is gone');
+  {
+    const log = q('[data-panel="turn-log"]')!.textContent!;
+    const now = log.indexOf('Turn 2 begins');
+    const prev = log.indexOf('Turn 1:');
+    if (now < 0 || prev < 0 || now > prev) throw new Error('Turn log should list the newest turn first: ' + log.slice(0, 200));
+  }
+
+  // a quiet card fades up by itself
+  let auto = false;
+  for (let i = 0; i < 40 && !auto; i++) {
+    if (document.body.textContent!.includes('Your legacy')) break;
+    await click(live()[0]);
+    const card = q('.flashcard');
+    if (!card) throw new Error('no card');
+    if (card.classList.contains('plain')) {
+      await wait(1400);
+      if (q('.flashcard')) throw new Error('quiet card should fade up by itself');
+      auto = true;
+    } else {
+      if (!card.textContent!.includes('Tap or press Enter')) throw new Error('held card needs a continue hint');
+      await wait(1400);
+      if (!q('.flashcard')) throw new Error('a hurt, threat or ending card must wait for you');
+      await click(card);
+    }
+  }
+  if (!auto) throw new Error('never saw a quiet card (test is random; re-run)');
+  console.log('auto fade ok');
+
+  // a number key skips a card (and, after a calm turn, also picks that action), never more than one extra turn
+  if (!document.body.textContent!.includes('Your legacy')) {
+    let before = -1;
+    for (let i = 0; i < 40; i++) {
+      if (document.body.textContent!.includes('Your legacy')) break;
+      if (q('.flashcard')) { await click(q('.flashcard')!); continue; }
+      before = turnNo();
+      await click(live()[0]);
+      if (q('.flashcard')) break;
+    }
+    if (q('.flashcard')) {
+      await key('1');
+      await wait(30);
+      const gained = turnNo() - before;
+      if (q('.flashcard') && !q('.flashcard')!.classList.contains('plain') && gained < 1) throw new Error('number key should skip the card');
+      console.log('number key ok');
+    }
+    while (q('.flashcard')) await click(q('.flashcard')!);
+  }
+
+  // with motion allowed the card fades up into the log before the buttons come back
+  g.__reduceMotion = false;
+  if (!document.body.textContent!.includes('Your legacy')) {
+    await click(live()[0]);
+    const card = q('.flashcard')!;
+    await click(card);
+    if (!q('.flashcard.leaving')) throw new Error('card should fade up when motion is allowed');
+    await wait(500);
+    if (q('.flashcard')) throw new Error('card should be gone after fading up');
+    console.log('fade-up ok');
+  }
+  g.__reduceMotion = true;
+  console.log('flashcard ok');
+  while (!document.body.textContent!.includes('Your legacy')) {
+    if (q('.flashcard')) { await click(q('.flashcard')!); continue; }
+    await click(live()[Math.floor(Math.random() * live().length)]);
+  }
+  await clickText('Your legacy');
+  if (q('.flash') && document.body.textContent!.includes('New species')) await clickText('Continue');
+  await clickText('Main menu');
+}
+
 // unlock flash: seed an account that has already won as a deer, so the next finished life unlocks the wolf
 {
   await act(async () => { root.unmount(); });
@@ -111,7 +218,7 @@ console.log('flash screens seen:', flashes);
   await clickText('Into the wild');
   let n = 0;
   while (n++ < 300) {
-    const fl = document.querySelector('.flash button') as HTMLButtonElement | null;
+    const fl = document.querySelector('.flashcard') as HTMLElement | null;
     if (fl) { await click(fl); continue; }
     if (document.body.textContent!.includes('Your legacy')) break;
     const live = (Array.from(document.querySelectorAll('.actions button')) as HTMLButtonElement[]).filter((b) => !b.disabled && !b.textContent!.startsWith('Cancel'));

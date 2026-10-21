@@ -1,6 +1,6 @@
 # Species: glossary
 
-Every in-game term, what it means, and how it works in the current build (v0.5.0).
+Every in-game term, what it means, and how it works in the current build (v0.5.1).
 The engine code is the source of truth. Items marked **Planned** are in the design doc but not built yet.
 
 When you add a feature that introduces a new term, add it here in the same change.
@@ -9,6 +9,7 @@ When you add a feature that introduces a new term, add it here in the same chang
 
 - [The loop](#the-loop)
 - [Life and turns](#life-and-turns)
+- [The Play screen](#the-play-screen)
 - [Stats](#stats)
 - [Needs meters](#needs-meters)
 - [Rolls and threats](#rolls-and-threats)
@@ -34,7 +35,7 @@ When you add a feature that introduces a new term, add it here in the same chang
 
 **Debrief** — The screen after a run, reached from the **Your legacy** button: what killed you or what worked, XP earned, Gene Points, codex gains, mastery, unlocks and mutation upgrades.
 
-**Unlock flash** — A full-screen gold flash ("New species: Wolf") shown just before the debrief when a run unlocks a species. It states the condition that triggered it. The debrief keeps its own unlock badge too.
+**Unlock flash** (the New species flash) — A full-screen gold flash ("New species: Wolf") shown just before the debrief when a run unlocks a species. It states the condition that triggered it. The debrief keeps its own unlock badge too.
 
 **Payout** — What a run earns. See [Account XP](#account-progression) for the formula.
 
@@ -61,7 +62,30 @@ When you add a feature that introduces a new term, add it here in the same chang
 
 **Maximum age** — The turn at which a run ends in old age: mouse 32, deer 40, wolf 40.
 
-**Turn report** — The summary shown after each action: what your action did, what changed when the next turn began, and a **NEW THIS TURN** tag on the new event. Ends with a **result flash**: red when you were hurt, green when you came through, gold for a goal moment, amber when the world cost you Health. The amber heading names the cause and the number (for example "Cold snap: -1 Health", "Starving: -2 Health"), and the Health chip carries a short cause label such as "cold".
+**Turn report** — The summary of one turn: what your action did, what changed when the next turn began, and a **NEW THIS TURN** tag on the new event. It is shown twice: first as the [flashcard](#the-play-screen), then in the Turn log.
+
+---
+
+## The Play screen
+
+One screen, five **panels**. "Screen" is kept for whole screens (menu, prep, birth, play, debrief); the parts of the Play screen are panels.
+
+| Panel | What it holds |
+|---|---|
+| **Environment panel** | Top. Season, turn and life stage, the place and its blurb, the animal sprites, and the current event (with the **NEW THIS TURN** tag). |
+| **Turn log panel** | Under the Environment panel. Newest first: the turn that just began (upkeep, the new event, what it cost you), then the result of your last action (dimmer), then **Earlier**: the last three turns, each as a whole group. |
+| **Meters panel** | Health, Hunger, Energy and Safety bars, the six stats, and the goal line. |
+| **Surroundings panel** | Food here, your sight tier, and the neighbouring places with their danger and food markers. |
+| **Actions panel** | The action buttons (or the travel picker). After each action it shows the flashcard instead. |
+
+**Flashcard** — The result of the action you just took, shown in the Actions panel at the same height as the buttons, then faded up into the Turn log. It carries both halves of the report: the action result with its stat chips, and what the new turn opened with. Its colour follows the outcome: red when you were hurt, green when you came through a threat, gold for a goal moment, amber when the world cost you Health (the heading names the cause and the number, for example "Cold snap: -1 Health"), neutral for a quiet turn. The flashcard replaced the full-screen result flash in v0.5.1.
+- **Quiet cards** (no threat, no Health lost, no ending) fade up by themselves after about a second. A thin bar shows the time left.
+- **Held cards** (a threat, Health lost, death, victory or old age) wait for a tap, Enter, Space or Escape.
+- **Number keys** skip any card. After a quiet card whose next turn is calm, the number key also picks that action. Otherwise it only dismisses the card, so you never choose blind against a threat.
+- **Held panels**: while the card is up, the Environment, Turn log, Meters and Surroundings panels keep showing the turn you just left. They swap to the new turn as the card fades up.
+- With reduced motion on, the card disappears instantly instead of animating.
+
+**New species flash** — The one remaining full-screen flash: gold, shown just before the debrief when a run unlocks a species. See [Unlock flash](#the-loop).
 
 ---
 
