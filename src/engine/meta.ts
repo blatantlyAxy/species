@@ -55,6 +55,7 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
   const end = run.ended;
   const notes: string[] = [];
   const unlocks: string[] = [];
+  const newSpecies: NonNullable<DebriefReport['newSpecies']> = [];
   const traitTierUps: string[] = [];
 
   // killed-by familiarity (the lowest gain)
@@ -109,7 +110,12 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
   if (!acc.unlocked.wolf && (acc.codex.wolf >= 100 || acc.wins.deer >= 1)) {
     acc.unlocked.wolf = true;
     acc.gp.wolf += SPECIES.wolf.startGp;
-    unlocks.push(acc.codex.wolf >= 100 ? 'Wolf unlocked: you know them well enough to become one.' : 'Wolf unlocked: the herd survived, and the hunters are next.');
+    const byCodex = acc.codex.wolf >= 100;
+    unlocks.push(byCodex ? 'Wolf unlocked: you know them well enough to become one.' : 'Wolf unlocked: the herd survived, and the hunters are next.');
+    newSpecies.push({
+      id: 'wolf',
+      condition: byCodex ? 'You filled the Wolf entry in your codex.' : 'You won a run as a deer.',
+    });
   }
   const day = SPECIES[species].turnsPerDay;
   if (!acc.hiddenFound.mayfly && run.turnsTaken <= day) {
@@ -119,7 +125,7 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
 
   const report: DebriefReport = {
     species, end, turns: run.age, payout, levelBefore, levelAfter: acc.level, newPerks, famChanges,
-    masteryBefore, masteryAfter, unlocks, traitTierUps, notes,
+    masteryBefore, masteryAfter, unlocks, traitTierUps, notes, newSpecies,
   };
   return { account: acc, report };
 }

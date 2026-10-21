@@ -1,6 +1,6 @@
 # Species: glossary
 
-Every in-game term, what it means, and how it works in the current build (v0.4.1).
+Every in-game term, what it means, and how it works in the current build (v0.5.0).
 The engine code is the source of truth. Items marked **Planned** are in the design doc but not built yet.
 
 When you add a feature that introduces a new term, add it here in the same change.
@@ -13,7 +13,7 @@ When you add a feature that introduces a new term, add it here in the same chang
 - [Needs meters](#needs-meters)
 - [Rolls and threats](#rolls-and-threats)
 - [Birth](#birth)
-- [Heirloom traits](#heirloom-traits)
+- [Mutations](#mutations)
 - [Account progression](#account-progression)
 - [Codex and unlocks](#codex-and-unlocks)
 - [Visibility tiers](#visibility-tiers)
@@ -32,7 +32,9 @@ When you add a feature that introduces a new term, add it here in the same chang
 
 **Respawn** — Starting a new run after one ends. The account, codex, Gene Points and mastery carry over; the animal does not.
 
-**Debrief** — The screen after a run: what killed you or what worked, XP earned, Gene Points, codex gains, mastery, unlocks and trait awakenings.
+**Debrief** — The screen after a run, reached from the **Your legacy** button: what killed you or what worked, XP earned, Gene Points, codex gains, mastery, unlocks and mutation upgrades.
+
+**Unlock flash** — A full-screen gold flash ("New species: Wolf") shown just before the debrief when a run unlocks a species. It states the condition that triggered it. The debrief keeps its own unlock badge too.
 
 **Payout** — What a run earns. See [Account XP](#account-progression) for the formula.
 
@@ -51,29 +53,29 @@ When you add a feature that introduces a new term, add it here in the same chang
 
 **Threat** — A predator event (hawk, fox, wolf pack, or a pack-mate rival). It replaces your normal action list with response options. See [Threat responses](#rolls-and-threats).
 
-**Windfall** — A good event: seed fall, clover flush, berries, a fresh carcass. Foraging during a windfall yields 1.8× Satiety.
+**Windfall** — A good event: seed fall, clover flush, berries, a fresh carcass. Foraging during a windfall feeds you 1.8× as much.
 
-**Season** — Spring, Summer, Autumn, Winter, 8 turns each. A year is 32 turns. Where you start in the year comes from birth luck. Winter adds Satiety drain, adds Energy drain outside sheltered ground, and makes Windy Ridge dangerous.
+**Season** — Spring, Summer, Autumn, Winter, 8 turns each. A year is 32 turns. Where you start in the year comes from birth luck. Winter adds Hunger, adds Energy drain outside sheltered ground, and makes Windy Ridge dangerous.
 
 **Life stage** — Juvenile, adult or elder. Juveniles get −1 Strength and Stamina. Elders get −1 Mobility and Stamina. Adulthood starts at the species' adult age, delayed by one turn for every point of Health or Intelligence you raised above baseline. Elder age is fixed per species.
 
 **Maximum age** — The turn at which a run ends in old age: mouse 32, deer 40, wolf 40.
 
-**Turn report** — The summary shown after each action: what your action did, what changed when the next turn began, and a **NEW THIS TURN** tag on the new event. Ends with a **result flash**: red when you were hurt, green when you came through, gold for a goal moment, amber when the world pushed back (cold, hunger).
+**Turn report** — The summary shown after each action: what your action did, what changed when the next turn began, and a **NEW THIS TURN** tag on the new event. Ends with a **result flash**: red when you were hurt, green when you came through, gold for a goal moment, amber when the world cost you Health. The amber heading names the cause and the number (for example "Cold snap: -1 Health", "Starving: -2 Health"), and the Health chip carries a short cause label such as "cold".
 
 ---
 
 ## Stats
 
-Six stats, each with a species baseline and a species cap. Stats are set at birth and do not change during a life, apart from mutation.
+Six stats, each with a species baseline and a species cap. Stats are set at birth and do not change during a life, apart from a rare birth quirk.
 
 | Stat | What it does |
 |---|---|
 | **Mobility** | Fleeing, hunting, chasing. Points above baseline make moves and flights cost more Energy. |
-| **Strength** | Fighting, challenges. Points above baseline raise Satiety drain. |
+| **Strength** | Fighting, challenges. Points above baseline raise Hunger. |
 | **Health** | Maximum HP (3 + 1.5 × Health, rounded), resistance to sickness, faster healing. Points above baseline delay adulthood. |
-| **Stamina** | Endurance. Points above baseline raise Satiety drain. |
-| **Intelligence** | Contesting herd place. Points above baseline raise Satiety drain and delay adulthood. |
+| **Stamina** | Endurance. Points above baseline raise Hunger. |
+| **Intelligence** | Challenging for herd rank. Points above baseline raise Hunger and delay adulthood. |
 | **Senses** | Hiding, warning, spotting threats, seeing the world. Points above baseline raise Energy drain. |
 
 **Baseline** — A species' default value for a stat.
@@ -82,21 +84,23 @@ Six stats, each with a species baseline and a species cap. Stats are set at birt
 
 **Floor** — The lowest a stat can go: 1. Lowering a stat below baseline refunds a Gene Point, so you can build a brute, a sprinter or a thinker.
 
-**Upkeep** — The price of raising a stat. Every point above baseline costs something each turn, so you cannot max everything. Strength, Stamina and Intelligence points together add 1 Satiety drain per 2 points. Senses points add 1 Energy drain per 2 points.
+**Upkeep** — The price of raising a stat. Every point above baseline costs something each turn, so you cannot max everything. Strength, Stamina and Intelligence points together add 1 Hunger per turn for every 2 points. Senses points add 1 Energy drain per 2 points. Mobility points add 1 Energy per move for every 2 points. Health and Intelligence points each add a turn before adulthood. The prep screen shows each stat's rule and your build's total, both read from the engine (`upkeepOf` in `run.ts`).
 
-**Build** — A mix of raised and lowered stats and chosen heirloom traits. Examples from playtests: the sprinter (Mobility), the brute (Strength, low Intelligence), the thinker (Intelligence and Senses).
+**Build** — A mix of raised and lowered stats and chosen mutations. Examples from playtests: the sprinter (Mobility), the brute (Strength, low Intelligence), the thinker (Intelligence and Senses).
 
-**Mutation** — On any life after your first, a 12% chance that one random stat shifts by 1 for that life only (60% chance it goes up). Shown at the start of the run.
+**Build presets** — Optional chips on the prep screen (Balanced, Brute, Sprinter, Thinker) that set the stats in one tap. Each lowers a stat or two for a refund, then spends your Gene Points on its favourite stats up to their caps. You can still adjust afterwards.
+
+**Birth quirk** — On any life after your first, a 12% chance that one random stat shifts by 1 for that life only (60% chance it goes up). Not to be confused with [mutations](#mutations), the traits you pick on the prep screen. Not yet shown to the player.
 
 ---
 
 ## Needs meters
 
-All run from 0 to 100, and higher is better.
+All run from 0 to 100. Health and Energy are better when high; Hunger is better when low.
 
 **Health (HP)** — Hit points. Maximum comes from the Health stat. At 0 you die. Lost to predator hits, cold, sickness and starvation. Regained by resting and, when well fed, slowly each few turns.
 
-**Satiety** — How full you are. Falls every turn, rises when you eat. At 0 you starve: −2 Health per turn.
+**Hunger** — How hungry you are. Rises every turn, falls when you eat. At 100 you starve: −2 Health per turn. The bar fills red as you get hungrier, and a Hunger chip is green when it drops. The engine still stores this as `satiety` (100 − Hunger), so saves and the sim are unchanged.
 
 **Energy** — Effort budget. Falls with actions, rises with rest. Below certain thresholds some actions are disabled ("Too tired"). At 0 you can only rest.
 
@@ -108,19 +112,19 @@ All run from 0 to 100, and higher is better.
 
 ## Rolls and threats
 
-**Contested roll** — The one rule for every clash. Chance = 50% + 8 points per point of difference between your stat and theirs, clamped to 5%–95%. Roll 1–100; at or below the chance, you win. Cover, trait bonuses and standing add small modifiers.
+**Contested roll** — The one rule for every clash. Chance = 50% + 8 points per point of difference between your stat and theirs, clamped to 5%–95%. Roll 1–100; at or below the chance, you win. Cover, mutation bonuses and rank progress add small modifiers.
 
 **Odds readout** — Showing the percentage on risky actions. A perk at account level 2; before that only the stat matchup is shown. The turn report never shows odds.
 
 **Threat responses** — What you can do when a threat appears:
 - **Hide** (Senses vs the predator's Senses, +½ cover): freeze and hope it passes.
 - **Bolt** (Mobility vs its Mobility, +½ cover): run. The big Energy spend.
-- **Stand and fight** (Strength + standing/3 vs its Strength): deer and wolf only.
-- **Call a warning** (Senses): deer only. Success sends the herd away and raises your standing.
+- **Stand and fight** (Strength + rank progress/3 vs its Strength): deer and wolf only.
+- **Call a warning** (Senses): deer only. Success sends the herd away and raises your rank progress.
 - **Keep eating (risky)** (Senses vs its Senses + 2): gamble for a meal.
-- **Back down**: wolf only. No roll, small standing loss.
+- **Back down**: wolf only. Safe, but costs a little rank progress.
 
-**Warned** — A threat you caught early because of Keen Nose. Gives a bonus on hide, warn and risky rolls.
+**Warned** — A threat you caught early because of the Keen Nose mutation. Gives a bonus on hide, warn and risky rolls.
 
 **Hit** — A failed response. The predator strikes for its damage in Health. Hawk and fox 4, wolf pack 6, pack-mate 3.
 
@@ -128,9 +132,12 @@ All run from 0 to 100, and higher is better.
 
 ## Birth
 
-**Birth roll** — The random circumstances you spawn into: birthplace, season, litter and neighbours. Shown on the birth screen before you begin.
+**Birth roll** — The random circumstances you spawn into: birthplace, season, litter and neighbours. Shown on the **Birth luck** screen before you begin, as three labelled rows (a one-line legend appears on your first life; tap a row label for more):
+- **Season**: when in the year you begin. The later the season, the sooner winter arrives.
+- **Start**: how well set up you are. Strong, ordinary or weak (the litter roll).
+- **Place**: where you begin, plus how many predators live nearby (the birthplace and neighbours rolls).
 
-**Birth luck** — A summary of the birth roll: **lucky**, **average** or **unlucky**. Each roll part scores +1, 0 or −1. Net +2 or more is lucky, −2 or less is unlucky.
+**Birth luck** — The title of the birth screen and a summary badge for the birth roll: **lucky**, **average** or **unlucky**. Each roll part scores +1, 0 or −1. Net +2 or more is lucky, −2 or less is unlucky.
 
 | Part | +1 | −1 |
 |---|---|---|
@@ -139,7 +146,7 @@ All run from 0 to 100, and higher is better.
 | Litter | Strong | Weak |
 | Neighbours | Quiet patch | Predator at the edge of its range |
 
-**Litter** — Strong, ordinary or weak (22% / 58% / 20%). Strong: +1 max HP, +10 Satiety, and a higher starting rank. Weak: −1 max HP, −15 Satiety.
+**Litter** — Strong, ordinary or weak (22% / 58% / 20%). Strong: +1 max HP, starts 10 less hungry, and a higher starting rank. Weak: −1 max HP, starts 15 hungrier.
 
 **Neighbours** — Quiet removes predators from your birth location. Predator adds one there.
 
@@ -147,19 +154,19 @@ All run from 0 to 100, and higher is better.
 
 ---
 
-## Heirloom traits
+## Mutations
 
-**Heirloom trait** — A passive ability carried into a life, tied to one stat, always with a price. Three exist now. Slots: one, or two from account level 4 (the **Second Heirloom Slot** perk).
+**Mutation** — A passive ability carried into a life, tied to one stat, always with a price. Three exist now. Slots: one, or two from account level 4 (the **Second Mutation Slot** perk). When every slot is filled, the unpicked mutations grey out with "Slots full. Unpick one to swap." (Called heirloom traits before v0.5.0.)
 
 | Trait | Stat | Benefit | Price |
 |---|---|---|---|
 | **Zigzag** | Mobility | +1 on flee rolls | Fleeing costs 4 extra Energy |
 | **Keen Nose** | Senses | Catch threats early: +1 on hide, warn and risky rolls; widens your view | +1 Energy drain every turn |
-| **Thick Coat** | Health | Ignore winter cold and the ridge wind | +1 Satiety drain in summer |
+| **Thick Coat** | Health | Ignore winter cold and the ridge wind | +1 Hunger in summer |
 
-**Tier I / Tier II (Awakened)** — A trait starts at Tier I. After it has helped about 10 times (counted across all your lives), it awakens to Tier II and gets stronger: Zigzag +2 on flee, Keen Nose +2 on first response, Thick Coat +1 maximum Health. Announced on the debrief.
+**Tier I / Tier II (Awakened)** — A mutation starts at Tier I. After it has helped 10 times (counted across all your lives), it awakens to Tier II and gets stronger: Zigzag +2 on flee, Keen Nose +2 on first response, Thick Coat +1 maximum Health. The prep screen shows the tier badge, "Upgrades at 10 …" with the thing that counts, and a progress bar. Tier II shows no bar. Announced on the debrief.
 
-**Trait use** — A moment where the trait actually mattered (fled with Zigzag, caught a threat with Keen Nose, shrugged off cold with Thick Coat). Counts toward awakening.
+**Use** — A moment where the mutation actually mattered. Counts toward awakening. Zigzag counts **flees**, Keen Nose counts **early warnings**, Thick Coat counts **cold blasts shrugged off**.
 
 ---
 
@@ -169,13 +176,13 @@ One account holds everything. It has no combat stats of its own, so every specie
 
 **Account XP and level** — XP is earned from every run and sets your account level. Thresholds for levels 2 to 10: 50, 130, 250, 450, 750, 1150, 1650, 2250, 3000, then +900 per level.
 
-**XP formula** — (turns lived + goal points + feats + discoveries) × ending multiplier × species difficulty, rounded.
-- **Survival**: 1 point per turn lived.
-- **Goal**: up to 40 points for progress toward the species goal. Partial credit counts.
-- **Feats**: up to 30 points on a win, more the sooner you win.
-- **Discoveries**: 10 per new codex entry or new mastery level.
-- **Ending multiplier**: win ×2, old age ×1.2, death ×1.
-- **Difficulty**: mouse ×1.5, deer ×1.0, wolf ×2.0.
+**XP formula** — (time survived + goal progress + goal bonus + new discoveries) × ending bonus × difficulty bonus, rounded. These are the rows on the debrief.
+- **Time survived**: 1 point per turn lived.
+- **Goal progress**: up to 40 points for progress toward the species goal. Partial credit counts.
+- **Goal bonus**: up to 30 points on a win, more the sooner you win.
+- **New discoveries**: 10 per new codex entry or new mastery level.
+- **Ending bonus**: win ×2, old age ×1.2, death ×1.
+- **Difficulty bonus**: mouse ×1.5, deer ×1.0, wolf ×2.0.
 
 **Perk** — A permanent account bonus from a level. They widen options rather than add raw power.
 
@@ -183,7 +190,7 @@ One account holds everything. It has no combat stats of its own, so every specie
 |---|---|---|
 | 2 | Odds Readout | Hit chances shown on risky actions |
 | 3 | Second Chance | Reroll a bad birth once per life |
-| 4 | Second Heirloom Slot | Carry two heirloom traits |
+| 4 | Second Mutation Slot | Carry two mutations |
 | 5 | Wider View | View of the world starts one tier wider |
 | 7 | Far Sight | View gets another tier wider |
 
@@ -191,7 +198,7 @@ One account holds everything. It has no combat stats of its own, so every specie
 
 **Mastery** — Per-species experience from living as that species: 1 per turn lived, +15 on a win. Levels at 30, 80 and 160. Each new level counts as a discovery for XP and adds a point of visibility.
 
-**Lives** — Total runs across all species. Mutation only starts after your first.
+**Lives** — Total runs across all species. Birth quirks only start after your first.
 
 **Wins** — Per-species win count. A deer win unlocks wolf.
 
@@ -223,7 +230,7 @@ A single life can add at most 40 to any one meter, so one lucky run cannot unloc
 
 ## Visibility tiers
 
-**Visibility tier** — How much of the hidden world you can see from where you stand, 0 to 3. Shown as "View tier N" in play.
+**Visibility tier** — How much of the hidden world you can see from where you stand, 0 to 3. Shown as "Sight: tier N of 3" in play.
 
 | Tier | You can see |
 |---|---|
@@ -232,7 +239,7 @@ A single life can add at most 40 to any one meter, so one lucky run cannot unloc
 | 2 | Food level on neighbouring places (scant, thin, fair, rich). Wolves also see how much deer there is |
 | 3 | Which predators are on neighbouring places |
 
-**How you earn tiers** — Visibility points add up, then cap at 3. One point each for: account level 5, account level 7, each mastery level reached for that species (3 available), Senses of 8 or more, carrying Keen Nose, and average codex familiarity of 40 or more.
+**How you earn tiers** — Visibility points add up, then cap at 3. One point each for: account level 5, account level 7, each mastery level reached for that species (3 available), Senses of 8 or more, carrying the Keen Nose mutation, and average codex familiarity of 40 or more.
 
 ---
 
@@ -241,23 +248,23 @@ A single life can add at most 40 to any one meter, so one lucky run cannot unloc
 Each species has a one-sentence win condition.
 
 **Field Mouse** — Raise two litters to weaning. Small prey, 32 turns, two turns a day.
-- **Litter / nest**: Breeding needs an adult, cover 2 or more, enough Satiety and Energy. A nest holds 1 to 5 **pups** and takes 4 turns of nursing to wean. Leaving abandons the nest; predator hits and hunger kill pups.
+- **Litter / nest**: Breeding needs an adult, cover 2 or more, not too hungry, and enough Energy. A nest holds 1 to 5 **pups** and takes 4 turns of nursing to wean. Leaving abandons the nest; predator hits and hunger kill pups.
 - **Mate call**: An event that makes breeding easier and adds a pup.
 
 **Deer** — Rise from herd-mate to leader, then lead the herd to the winter range intact. Herd prey, 40 turns.
 - **Herd**: Starts at 8. Falls through wolf attacks, winter cold, hunger. Win needs at least 6 left.
-- **Rank**: Your place in the herd, 1 = leader. Start at 4, or 3 with a strong litter. Leaders and trusted ranks (1 to 3) keep more of the herd alive.
-- **Standing**: How much the herd trusts you. Rises when you warn successfully, lead, and just by being an adult in a healthy herd. Falls on a failed bid. Gates each rank-up and adds up to +2 to the roll.
-- **Vie**: Challenge for the next place up. Intelligence + Senses (averaged) against the rank's wit. A failed vie costs standing and a two-turn **cooldown** ("Recovering").
-- **Lead / Follow**: Move toward the Glen. Ranks 1 to 3 lead: the herd follows closely (**cohesion** halves herd losses that turn) and your standing grows. Lower ranks follow at the herd's own pace.
+- **Rank**: Your rank in the herd, 1 = leader. Start at 4, or 3 with a strong litter. Leaders and trusted ranks (1 to 3) keep more of the herd alive.
+- **Rank progress**: How much the herd trusts you. Rises when you warn successfully, lead, and just by being an adult in a healthy herd. Falls on a failed challenge. Gates each rank-up and adds up to +2 to the roll. (Stored as `standing` in the engine; wolves use it too.)
+- **Challenge for rank**: Contest the next rank up. Intelligence + Senses (averaged) against that rank's wit. A failed challenge costs rank progress and a two-turn **cooldown** ("Recovering"). (The action id is still `vie`.)
+- **Lead / Follow**: Move toward the Glen. Ranks 1 to 3 lead: the herd follows closely (**cohesion** halves herd losses that turn) and your rank progress grows. Lower ranks follow at the herd's own pace.
 - **The Glen**: Sheltered Glen, the winter range. Win by being there as the leader, in winter, age 8 or more, with 6 or more herd-mates.
 
 **Wolf** — Become pack alpha. Pack predator, 40 turns.
 - **Pack rank**: Out of 6, 1 = alpha. Start at 5, or 4 with a strong litter.
-- **Challenge**: Fight the next rank up on Strength. A loss costs 3 Health, standing and a two-turn cooldown.
-- **Pack-mate (rival)**: A threat event where a pack-mate tests you. Beating it raises your standing.
-- **Howl**: A bonding action, small chance of a standing gain.
-- **Hunt**: Deer are a big meal (+45 Satiety) and raise standing. Small prey is a snack. **Fresh tracks** give a one-time hunt bonus.
+- **Challenge**: Fight the next rank up on Strength. A loss costs 3 Health, rank progress and a two-turn cooldown.
+- **Pack-mate (rival)**: A threat event where a pack-mate tests you. Beating it raises your rank progress.
+- **Howl**: A bonding action, small chance of a rank progress gain.
+- **Hunt**: Deer are a big meal (Hunger −45) and raise rank progress. Small prey is a snack. **Fresh tracks** give a one-time hunt bonus.
 
 ---
 
@@ -271,7 +278,7 @@ Each species has a one-sentence win condition.
 
 **Cover** — How hidden you are, from 1 (open) to 5 (dense). Helps hiding and bolting, raises Safety, and is needed for nesting. Hawks avoid dense cover.
 
-**Harsh** — A location that hurts in winter: Windy Ridge. Costs Health unless you have Thick Coat.
+**Harsh** — A location that hurts in winter: Windy Ridge. Costs Health unless you have the Thick Coat mutation.
 
 **Sheltered** — A location safe from winter cold: Sheltered Glen.
 
@@ -303,8 +310,9 @@ None of these are in the engine yet.
 
 The design doc has not yet caught up with these shipped decisions. Worth reconciling when the doc is next updated.
 
-- **Heirloom traits are earned in the doc, free in the build.** The doc has wins and feats awarding a trait. Right now all three are available from the start, limited only by slot count.
+- **Mutations (heirloom traits in the doc) are earned in the doc, free in the build.** The doc has wins and feats awarding a trait. Right now all three are available from the start, limited only by slot count.
 - **Visibility inputs.** The doc ties tier 1 to Senses 4 and basic codex entries. The build uses the point system under [Visibility tiers](#visibility-tiers).
 - **Stat range.** The doc says every stat runs 1 to 10. Caps are per species (mouse Strength 3, wolf Strength 10).
-- **Rank and standing.** Deer leadership ranks, standing, vie, cohesion and the stat floor with Gene Point refunds are shipped but not in the doc.
+- **Rank and rank progress.** Deer leadership ranks, rank progress, challenging for rank, cohesion and the stat floor with Gene Point refunds are shipped but not in the doc.
+- **Player-facing renames in v0.5.0.** Heirloom to Mutation, Satiety to Hunger (shown inverted), Standing and Place to Rank, Vie for place to Challenge for rank, Start Play to Begin, Begin life to Into the wild, See the debrief to Your legacy, "Your birth" to Birth luck. The doc still uses the old words.
 - **Old-age lineage bonus.** The doc mentions a small lineage bonus on old age. Not built; old age only gets ×1.2 XP.

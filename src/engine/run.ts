@@ -29,8 +29,7 @@ function say(run: RunState, s: string) {
 
 export function stageOf(run: RunState): Stage {
   const d = SPECIES[run.species];
-  const shift =
-    Math.max(0, run.stats.health - d.baseStats.health) + Math.max(0, run.stats.intelligence - d.baseStats.intelligence);
+  const shift = upkeepOf(run.species, run.stats).growUp;
   if (run.age < d.adultAt + shift) return 'juvenile';
   if (run.age < d.elderAt) return 'adult';
   return 'elder';
@@ -56,9 +55,39 @@ export function maxHpOf(run: RunState): number {
   );
 }
 
+const above = (stats: Record<Stat, number>, species: SpeciesId, s: Stat) =>
+  Math.max(0, stats[s] - SPECIES[species].baseStats[s]);
+
+export interface Upkeep {
+  /** Extra Hunger gained each turn (Strength, Stamina and Intelligence above baseline). */
+  hunger: number;
+  /** Extra Energy lost each turn (Senses above baseline). */
+  energy: number;
+  /** Extra Energy per move, flee or hunt (Mobility above baseline). */
+  move: number;
+  /** Extra turns before adulthood (Health and Intelligence above baseline). */
+  growUp: number;
+}
+
+/** The price of raised stats. The engine and the prep screen both read this. */
+export function upkeepOf(species: SpeciesId, stats: Record<Stat, number>): Upkeep {
+  return {
+    hunger: Math.floor((above(stats, species, 'strength') + above(stats, species, 'stamina') + above(stats, species, 'intelligence')) / 2),
+    energy: Math.floor(above(stats, species, 'senses') / 2),
+    move: Math.floor(above(stats, species, 'mobility') / 2),
+    growUp: above(stats, species, 'health') + above(stats, species, 'intelligence'),
+  };
+}
+
+/** What one stat costs on its own, with every other stat at baseline. */
+export function statUpkeep(species: SpeciesId, stat: Stat, value: number): Upkeep {
+  const base = { ...SPECIES[species].baseStats };
+  base[stat] = value;
+  return upkeepOf(species, base);
+}
+
 function moveExtra(run: RunState): number {
-  const d = SPECIES[run.species];
-  return Math.floor(Math.max(0, run.stats.mobility - d.baseStats.mobility) / 2);
+  return upkeepOf(run.species, run.stats).move;
 }
 
 function addFam(run: RunState, id: CodexId, n: number, why: string) {
@@ -90,6 +119,11 @@ function gainSatiety(run: RunState, n: number) {
   run.satiety = clamp(run.satiety + n, 0, 100);
 }
 
+/** Record Health lost to the world, so the turn report can name the cause. */
+function envHit(run: RunState, cause: string, chip: string, hp: number) {
+  (run.envHits ??= []).push({ cause, chip, hp });
+}
+
 function heal(run: RunState, n: number) {
   run.hp = Math.min(maxHpOf(run), run.hp + n);
 }
@@ -102,6 +136,37 @@ const SEASON_BIRTH = [
   'Autumn: winter is on its way.',
   'Late autumn: winter arrives within a few turns.',
 ];
+
+const LITTER_LINE = {
+  strong: 'A strong start: well fed, with family close by.',
+  ordinary: 'An ordinary start: no head start, no handicap.',
+  weak: 'A weak start: small, hungry, and short on help.',
+};
+const NEIGHBOUR_LINE = {
+  quiet: 'A quiet patch with few predators about.',
+  normal: '',
+  predator: 'You were born at the edge of a predator\'s range.',
+};
+
+function placeLine(loc: string): string {
+  const L = LOCATIONS[loc];
+  if (loc === 'clover_field') return `Born in ${L.name}: food everywhere and cover close by.`;
+  if (loc === 'windy_ridge') return `Born on ${L.name}: barren, exposed, and far from anything to eat.`;
+  return `Born at ${L.name}. ${L.blurb}`;
+}
+
+export type BirthRowLabel = 'Season' | 'Start' | 'Place';
+
+/** The birth panel as three labelled rows. Built from the same lines the birth roll writes. */
+export function birthRows(birth: BirthRoll): { label: BirthRowLabel; text: string }[] {
+  const si = birth.startOffset === 0 ? 0 : birth.startOffset === 8 ? 1 : birth.startOffset === 16 ? 2 : 3;
+  const place = [placeLine(birth.loc), NEIGHBOUR_LINE[birth.neighbours]].filter(Boolean).join(' ');
+  return [
+    { label: 'Season', text: SEASON_BIRTH[si] },
+    { label: 'Start', text: LITTER_LINE[birth.litter] },
+    { label: 'Place', text: place },
+  ];
+}
 
 export function rollBirth(species: SpeciesId, seed: number): BirthRoll {
   const r = seededRand(seed);
@@ -116,18 +181,17 @@ export function rollBirth(species: SpeciesId, seed: number): BirthRoll {
 
   let pts = 0;
   const lines: string[] = [];
-  const L = LOCATIONS[loc];
-  if (loc === 'clover_field') { pts++; lines.push(`Born in ${L.name}: food everywhere and cover close by.`); }
-  else if (loc === 'windy_ridge') { pts--; lines.push(`Born on ${L.name}: barren, exposed, and far from anything to eat.`); }
-  else lines.push(`Born at ${L.name}. ${L.blurb}`);
+  if (loc === 'clover_field') pts++;
+  else if (loc === 'windy_ridge') pts--;
+  lines.push(placeLine(loc));
   const si = startOffset === 0 ? 0 : startOffset === 8 ? 1 : startOffset === 16 ? 2 : 3;
   if (si === 0) pts++;
   if (si === 3) pts--;
   lines.push(SEASON_BIRTH[si]);
-  if (litter === 'strong') { pts++; lines.push('A strong start: well fed, with family close by.'); }
-  if (litter === 'weak') { pts--; lines.push('A weak start: small, hungry, and short on help.'); }
-  if (neighbours === 'quiet') { pts++; lines.push('A quiet patch with few predators about.'); }
-  if (neighbours === 'predator') { pts--; lines.push('You were born at the edge of a predator\'s range.'); }
+  if (litter === 'strong') { pts++; lines.push(LITTER_LINE.strong); }
+  if (litter === 'weak') { pts--; lines.push(LITTER_LINE.weak); }
+  if (neighbours === 'quiet') { pts++; lines.push(NEIGHBOUR_LINE.quiet); }
+  if (neighbours === 'predator') { pts--; lines.push(NEIGHBOUR_LINE.predator); }
   const luck = pts >= 2 ? 'lucky' : pts <= -2 ? 'unlucky' : 'average';
   return { seed, loc, startOffset, litter, neighbours, lines, luck };
 }
@@ -193,7 +257,7 @@ export function startRun(
     const s = STATS[Math.floor(rnd(run) * STATS.length)];
     const up = rnd(run) < 0.6;
     run.stats[s] = clamp(run.stats[s] + (up ? 1 : -1), 1, 12);
-    run.mutation = `Mutation: ${STAT_LABEL[s]} ${up ? '+1' : '-1'} for this life.`;
+    run.mutation = `Birth quirk: ${STAT_LABEL[s]} ${up ? '+1' : '-1'} for this life.`;
   }
   run.hp = maxHpOf(run);
   run.world = initWorld(() => rnd(run), birth, species);
@@ -219,23 +283,20 @@ function beginTurn(run: RunState, first = false) {
   const loc = LOCATIONS[run.loc];
   const season = seasonOf(run);
   if (!first) {
-    let drain = def.drain.satiety;
-    const extras =
-      Math.max(0, run.stats.strength - def.baseStats.strength) +
-      Math.max(0, run.stats.stamina - def.baseStats.stamina) +
-      Math.max(0, run.stats.intelligence - def.baseStats.intelligence);
-    drain += Math.floor(extras / 2);
+    const upkeep = upkeepOf(run.species, run.stats);
+    let drain = def.drain.satiety + upkeep.hunger;
     if (season === 3) drain += 2;
     if (hasTrait(run, 'thick_coat') && season === 1) drain += 1;
     gainSatiety(run, -drain);
-    let eDrain = def.drain.energy + Math.floor(Math.max(0, run.stats.senses - def.baseStats.senses) / 2);
+    let eDrain = def.drain.energy + upkeep.energy;
     if (hasTrait(run, 'keen_nose')) eDrain += 1;
     if (season === 3 && !loc.sheltered) eDrain += 1;
     energyCost(run, eDrain);
-    say(run, `Time passes: Satiety -${drain}, Energy -${eDrain}.`);
+    say(run, `Time passes: Hunger +${drain}, Energy -${eDrain}.`);
 
     if (run.satiety <= 0) {
       run.hp -= 2;
+      envHit(run, 'Starving', 'starving', 2);
       say(run, 'You are starving. -2 Health.');
       if (run.hp <= 0) { die(run, 'You starved.'); return; }
     }
@@ -245,6 +306,7 @@ function beginTurn(run: RunState, first = false) {
         say(run, 'Your thick coat blunts the bitter wind.');
       } else {
         run.hp -= 1;
+        envHit(run, 'Bitter wind', 'wind', 1);
         say(run, 'The bitter wind bites. -1 Health.');
         if (run.hp <= 0) { die(run, 'You froze on the ridge.'); return; }
       }
@@ -326,6 +388,7 @@ function drawEvent(run: RunState) {
         } else {
           run.hp -= 1;
           energyCost(run, 8);
+          envHit(run, 'Cold snap', 'cold', 1);
           say(run, 'The cold gets into you. -1 Health, -8 Energy.');
           if (run.hp <= 0) die(run, 'You froze.');
         }
@@ -339,6 +402,7 @@ function drawEvent(run: RunState) {
       if (!c.ok) {
         run.hp -= 3;
         energyCost(run, 10);
+        envHit(run, 'Sickness', 'sickness', 3);
         say(run, 'The sickness takes hold. -3 Health, -10 Energy.');
         if (run.hp <= 0) die(run, 'You succumbed to sickness.');
       } else say(run, 'You shrug the sickness off.');
@@ -401,7 +465,7 @@ export function getActions(run: RunState): Action[] {
     const tired = run.energy < 10;
     if (run.species === 'wolf') {
       acts.push({ id: 'fight', label: 'Stand your ground', hint: odds('fight', pred) });
-      acts.push({ id: 'submit', label: 'Back down', hint: 'No roll. Lose a little standing.' });
+      acts.push({ id: 'submit', label: 'Back down', hint: 'Costs a little rank.' });
       acts.push({ id: 'bolt', label: 'Slip away', hint: odds('bolt', pred), disabled: tired ? 'Too tired' : undefined });
       return acts;
     }
@@ -426,10 +490,10 @@ export function getActions(run: RunState): Action[] {
   if (run.species === 'wolf') {
     const deerHere = run.world.deer[run.loc];
     const mouseHere = run.world.mouse[run.loc];
-    if (ev?.id === 'carcass') acts.push({ id: 'scavenge', label: 'Feast on the carcass', hint: 'No roll. Big meal.' });
+    if (ev?.id === 'carcass') acts.push({ id: 'scavenge', label: 'Feast on the carcass', hint: 'Safe. Big meal.' });
     acts.push({
       id: 'hunt_deer', label: 'Hunt deer',
-      hint: `Mobility and Strength vs deer${deerHere < 1 ? '' : ''}`,
+      hint: 'Your Mobility + Strength vs the deer\'s.',
       disabled: exhausted || run.energy < 15 ? 'Too tired' : deerHere < 1 ? 'No deer here' : undefined,
     });
     acts.push({ id: 'hunt_small', label: 'Hunt small prey', hint: 'Easy, small meal', disabled: exhausted ? 'Too tired' : mouseHere < 0.8 ? 'Nothing here' : undefined });
@@ -483,9 +547,9 @@ export function getActions(run: RunState): Action[] {
     else if (stage === 'juvenile') why = 'Not grown yet';
     else if (run.cooldown > 0) why = `Recovering (${run.cooldown})`;
     else if (run.energy < 15) why = 'Too tired';
-    else if (run.standing < need) why = `The herd does not trust you yet (standing ${run.standing.toFixed(1)}/${need.toFixed(1)})`;
+    else if (run.standing < need) why = `The herd does not trust you yet (rank progress ${run.standing.toFixed(1)}/${need.toFixed(1)})`;
     acts.push({
-      id: 'vie', label: run.rank <= 1 ? 'Lead doe of the herd' : `Vie for place ${target} in the herd`,
+      id: 'vie', label: run.rank <= 1 ? 'Lead doe of the herd' : `Challenge for rank ${target}`,
       hint: 'Goal: become the herd leader. Wits and senses',
       disabled: why,
     });
@@ -501,7 +565,7 @@ export function getActions(run: RunState): Action[] {
     acts.push({
       id: 'challenge', label: target ? `Challenge rank ${target} (Strength ${NPC_STR[target] ?? 7})` : 'Challenge', hint: 'Goal: rise to alpha', disabled: why,
     });
-    acts.push({ id: 'howl', label: 'Howl with the pack', hint: 'Bond. Small standing gain.' });
+    acts.push({ id: 'howl', label: 'Howl with the pack', hint: 'Bond. A little rank progress.' });
   }
   void def;
   return acts;
@@ -590,7 +654,7 @@ function resolveThreat(run: RunState, resp: string) {
         if (codex) addFam(run, codex, 20, 'beat it');
         if (pred.id === 'rival') {
           run.standing += 1;
-          say(run, 'Your standing grows.');
+          say(run, 'Your rank progress grows.');
         }
       } else {
         hit = true;
@@ -664,8 +728,8 @@ function forage(run: RunState, mult = 1) {
   const cost = foragingCost(stock);
   energyCost(run, cost);
   const tail = boosted ? ' (a windfall!)' : '';
-  if (stock < 1) say(run, `Slim pickings. You search a long while. +${gain} Satiety, -${cost} Energy.${tail}`);
-  else say(run, `You eat well. +${gain} Satiety, -${cost} Energy${tail}.`);
+  if (stock < 1) say(run, `Slim pickings. You search a long while. Hunger -${gain}, Energy -${cost}.${tail}`);
+  else say(run, `You eat well. Hunger -${gain}, Energy -${cost}${tail}.`);
 }
 
 export function foragingCost(stock: number): number {
@@ -686,7 +750,7 @@ function huntDeer(run: RunState) {
     gainSatiety(run, 45);
     run.standing += 1;
     run.world.deer[run.loc] = Math.max(0, run.world.deer[run.loc] - 1);
-    say(run, 'You bring down a deer. +45 Satiety. The pack respects the catch.');
+    say(run, 'You bring down a deer. Hunger -45. The pack respects the catch.');
     addFam(run, 'deer', 20, 'ate it');
   } else {
     say(run, 'The deer bolts. The hunt fails.');
@@ -713,7 +777,7 @@ function perform(run: RunState, id: string, target?: string) {
       if (c.ok) {
         gainSatiety(run, 18);
         run.world.mouse[run.loc] = Math.max(0.3, run.world.mouse[run.loc] - 0.5);
-        say(run, 'A quick snack. +18 Satiety.');
+        say(run, 'A quick snack. Hunger -18.');
         addFam(run, 'mouse', 20, 'ate it');
       } else say(run, 'It squirms out of reach.');
       break;
@@ -722,7 +786,7 @@ function perform(run: RunState, id: string, target?: string) {
       gainSatiety(run, 40);
       run.standing += 0.5;
       energyCost(run, 3);
-      say(run, 'You gorge on the carcass. +40 Satiety.');
+      say(run, 'You gorge on the carcass. Hunger -40.');
       break;
     case 'rest': {
       energyCost(run, -30);
@@ -738,11 +802,11 @@ function perform(run: RunState, id: string, target?: string) {
       energyCost(run, 10);
       if (c.ok) {
         run.rank = target;
-        say(run, target <= 1 ? 'The old lead doe steps aside. The herd looks to you.' : `The herd shifts to make room. You rise to place ${run.rank}.`);
+        say(run, target <= 1 ? 'The old lead doe steps aside. The herd looks to you.' : `The herd shifts to make room. You rise to rank ${run.rank}.`);
       } else {
         run.standing = Math.max(0, run.standing - 0.5);
         run.cooldown = 2;
-        say(run, 'The herd is not convinced. You fall back, and your standing slips.');
+        say(run, 'The herd is not convinced. You fall back, and your rank progress slips.');
       }
       break;
     }
@@ -844,6 +908,7 @@ export function act(run0: RunState, actionId: string, target?: string): RunState
   const run: RunState = structuredClone(run0);
   if (run.ended) return run;
   run.last = [];
+  run.envHits = [];
   const a = getActions(run).find((x) => x.id === actionId);
   if (!a || a.disabled) {
     say(run, 'That cannot be done right now.');
@@ -881,6 +946,7 @@ export function act(run0: RunState, actionId: string, target?: string): RunState
   const report: TurnReport = {
     turn: turnNo, action: label, resolve, arrival, before, afterAction, afterArrival: snapOf(run),
     newEvent: run.ended ? undefined : run.event?.name,
+    envHits: run.envHits && run.envHits.length ? run.envHits : undefined,
   };
   if (wasThreat && ev0?.pred) {
     const killed = run.ended?.type === 'death' && afterAction.hp <= 0;
@@ -920,8 +986,8 @@ export function getView(run: RunState): RunView {
   });
   let goalLine = '';
   if (run.species === 'mouse') goalLine = `Litters weaned: ${run.litters}/2`;
-  if (run.species === 'deer') goalLine = `Place ${run.rank} in the herd (1 = leader), standing ${run.standing.toFixed(1)}. Herd ${run.herd}/8. Lead at least 6 of them to the Glen by winter.`;
-  if (run.species === 'wolf') goalLine = `Pack rank ${run.rank} of 6. Standing ${run.standing.toFixed(1)}.`;
+  if (run.species === 'deer') goalLine = `Rank ${run.rank} in the herd (1 = leader). Herd ${run.herd}/8. Lead at least 6 of them to the Glen by winter.`;
+  if (run.species === 'wolf') goalLine = `Pack rank ${run.rank} of 6. Rank progress ${run.standing.toFixed(1)}.`;
   return {
     locName: loc.name, biome: loc.biome, blurb: loc.blurb,
     seasonName: SEASON_NAMES[seasonOf(run)], turn: run.age + 1, maxTurns: def.maxAge,

@@ -92,22 +92,22 @@ export const PREDATORS: Record<PredatorId, PredatorDef> = {
   rival: { id: 'rival', name: 'Pack-mate', senses: 6, mobility: 6, strength: 7, damage: 3 },
 };
 
-export const TRAITS: Record<TraitId, { id: TraitId; name: string; stat: string; benefit: string; price: string; tier2: string }> = {
+export const TRAITS: Record<TraitId, { id: TraitId; name: string; stat: string; benefit: string; price: string; tier2: string; unit: string }> = {
   zigzag: {
     id: 'zigzag', name: 'Zigzag', stat: 'Mobility',
     benefit: '+1 on flee rolls', price: 'Fleeing costs extra Energy',
-    tier2: 'Awakened: +2 on flee rolls',
+    tier2: 'Awakened: +2 on flee rolls', unit: 'flees',
   },
   keen_nose: {
     id: 'keen_nose', name: 'Keen Nose', stat: 'Senses',
     benefit: 'Catch threats early: +1 on your first response, and a wider view of nearby danger',
     price: 'Costs extra Energy each turn',
-    tier2: 'Awakened: +2 on your first response',
+    tier2: 'Awakened: +2 on your first response', unit: 'early warnings',
   },
   thick_coat: {
     id: 'thick_coat', name: 'Thick Coat', stat: 'Health',
-    benefit: 'Shrug off winter cold', price: 'Satiety drains faster in summer',
-    tier2: 'Awakened: +1 maximum Health',
+    benefit: 'Shrug off winter cold', price: 'Hunger rises faster in summer',
+    tier2: 'Awakened: +1 maximum Health', unit: 'cold blasts shrugged off',
   },
 };
 
@@ -131,7 +131,7 @@ export function levelForXp(xp: number): number {
 export const PERKS: Perk[] = [
   { level: 2, name: 'Odds Readout', text: 'Hit chances are shown on each risky action.' },
   { level: 3, name: 'Second Chance', text: 'Reroll a bad birth once per life.' },
-  { level: 4, name: 'Second Heirloom Slot', text: 'Carry two heirloom traits into a life.' },
+  { level: 4, name: 'Second Mutation Slot', text: 'Carry two mutations into a life.' },
   { level: 5, name: 'Wider View', text: 'Your view of the world starts one tier wider.' },
   { level: 7, name: 'Far Sight', text: 'Your view of the world gets another tier wider.' },
 ];

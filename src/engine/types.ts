@@ -123,6 +123,16 @@ export interface TurnReport {
   afterArrival: Snap;
   threat?: { name: string; pred: PredatorId; outcome: 'safe' | 'hurt' | 'killed' };
   newEvent?: string;
+  /** Health lost to the world (cold, wind, starving, sickness) as the turn began. */
+  envHits?: EnvHit[];
+}
+
+export interface EnvHit {
+  /** Heading label, for example "Cold snap". */
+  cause: string;
+  /** Short label for the stat chip, for example "cold". */
+  chip: string;
+  hp: number;
 }
 
 export interface RunState {
@@ -164,6 +174,8 @@ export interface RunState {
   visibilityTier: number;
   showOdds: boolean;
   report: TurnReport | null;
+  /** Scratch list of world damage taken this turn; copied onto the turn report. */
+  envHits?: EnvHit[];
 }
 
 export interface Perk {
@@ -255,4 +267,6 @@ export interface DebriefReport {
   unlocks: string[];
   traitTierUps: string[];
   notes: string[];
+  /** Playable species unlocked by this run, with the condition that triggered it. */
+  newSpecies?: { id: SpeciesId; condition: string }[];
 }

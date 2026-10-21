@@ -11,7 +11,7 @@
   --bad: #ff6b6b;
   --warn: #ffb04e;
   --hp: #ff6b6b;
-  --sat: #ffb04e;
+  --hun: #e5533d;
   --en: #5ec2ff;
   --safe: #8ee08e;
   color-scheme: dark;
@@ -103,7 +103,19 @@ p { margin: 0 0 8px; line-height: 1.45; }
 }
 .card.locked { opacity: 0.6; }
 .card.pick { cursor: pointer; }
-.card.pick:hover { border-color: var(--accent); }
+.card.pick:hover:not(:disabled) { border-color: var(--accent); }
+/* mutation picker: real buttons, so a full slot row greys out like the stat floor buttons */
+.mutbtn { display: block; width: 100%; text-align: left; color: inherit; font: inherit; font-size: 14px; }
+.card.pick:disabled {
+  cursor: not-allowed; color: #6a7088; border: 3px dashed #343954; opacity: 1;
+  background: repeating-linear-gradient(135deg, #1a1d2b 0 6px, #1e2232 6px 12px); filter: grayscale(1);
+}
+.card.pick:disabled .badge, .card.pick:disabled .dim { color: #565c74; }
+.warnline { color: var(--warn); margin: 0; }
+.upkeep { margin: -2px 0 6px; line-height: 1.35; }
+.birthrow { display: grid; grid-template-columns: 74px 1fr; gap: 10px; align-items: start; padding: 6px 0; border-top: 1px dashed #2b2f42; font-size: 14px; }
+.rowlabel { background: #0c0e15; color: var(--accent); border: 2px solid var(--bezel-hi); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: 12px; cursor: pointer; text-align: center; }
+.rowlabel:hover { border-color: var(--accent); }
 .badge {
   display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
   background: #0c0e15; color: var(--dim);
@@ -150,7 +162,7 @@ p { margin: 0 0 8px; line-height: 1.45; }
 }
 .bar .fill { height: 100%; background-image: repeating-linear-gradient(90deg, currentColor 0 7px, rgba(0,0,0,0.5) 7px 8px); transition: width 0.25s steps(8); }
 .bar.hp { color: var(--hp); }
-.bar.sat { color: var(--sat); }
+.bar.hun { color: var(--hun); }
 .bar.en { color: var(--en); }
 .bar.safe { color: var(--safe); }
 .bar .num { text-align: right; color: var(--dim); }
@@ -194,7 +206,7 @@ td.num, th.num { text-align: right; }
 .verdict.safe { color: var(--good); } .verdict.hurt { color: var(--warn); } .verdict.killed { color: var(--bad); }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 2px 0; }
 .chip { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: #0c0e15; border: 1px solid #2b2f42; }
-.chip.up { color: var(--good); } .chip.down { color: var(--bad); } .chip.zero { color: var(--dim); }
+.chip.good { color: var(--good); } .chip.bad { color: var(--bad); } .chip.zero { color: var(--dim); }
 .olderhead { margin-top: 8px; font-size: 11px; color: #5d6380; text-transform: uppercase; }
 .log .old { font-size: 12px; }
 .log.tone-bad { border-left: 4px solid var(--bad); }

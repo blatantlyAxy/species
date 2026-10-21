@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CODEX_NOTES, PERKS, SPECIES, STAT_FLOOR, STATS, STAT_LABEL, TIER2_USES, TRAITS, TRAIT_IDS, MASTERY_STEPS,
-  act, createAccount, finishRun, getView, masteryLevel, rollBirth, startRun, traitSlots, xpForLevel,
+  act, birthRows, createAccount, finishRun, getView, masteryLevel, rollBirth, startRun, statUpkeep, traitSlots, upkeepOf, xpForLevel,
 } from '../engine';
 import type {
   Account, Action, BirthRoll, CodexId, DebriefReport, RunState, Snap, SpeciesId, Stat, TraitId, TurnReport,
 } from '../engine';
 
-type Screen = 'feedback' | 'menu' | 'select' | 'prep' | 'birth' | 'play' | 'debrief' | 'codex' | 'account';
+type Screen = 'feedback' | 'menu' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account';
 
 const ACCOUNT_KEY = 'species_account_v1';
 const RUN_KEY = 'species_run_v1';
@@ -110,7 +110,7 @@ export function App() {
     setSpecies(run.species);
     setReport(res.report);
     setRun(null);
-    setScreen('debrief');
+    setScreen(res.report.newSpecies?.length ? 'unlock' : 'debrief');
   };
 
   const [eraseArmed, setEraseArmed] = useState(false);
@@ -136,13 +136,16 @@ export function App() {
           traits={traits} setTraits={setTraits} onBorn={beBorn} onBack={goSelect} />
       )}
       {screen === 'birth' && birth && (
-        <Birth account={account} birth={birth} rerolled={rerolled}
+        <Birth account={account} birth={birth} species={species} rerolled={rerolled}
           onReroll={() => { setBirth(rollBirth(species, newSeed())); setRerolled(true); }}
           onBegin={begin} onBack={() => setScreen('prep')} />
       )}
       {screen === 'play' && run && (
         <Play account={account} run={run} onRun={setRun} onFinish={finish} onMenu={() => setScreen('menu')} />
       )}
+      {screen === 'unlock' && report?.newSpecies?.length ? (
+        <UnlockFlash species={report.newSpecies} onContinue={() => setScreen('debrief')} />
+      ) : null}
       {screen === 'debrief' && report && (
         <Debrief report={report} species={report.species} account={account}
           onAgain={() => choose(report.species)} onMenu={() => setScreen('menu')} />
@@ -180,7 +183,7 @@ function Menu(p: {
         {(p.hasRun || p.hasEnded) && (
           <button className="btn primary" onClick={p.onContinue}>{p.hasEnded ? 'See how your last life ended' : 'Continue your life'}</button>
         )}
-        <button className="btn primary" onClick={p.onStart}>Start Play</button>
+        <button className="btn primary" onClick={p.onStart}>Begin</button>
         <button className="btn" onClick={p.onCodex}>Codex</button>
         <button className="btn" onClick={p.onAccount}>Account and perks</button>
         <button className="btn" onClick={p.onReset}>{p.eraseArmed ? 'Tap again to erase everything' : 'Erase save'}</button>
@@ -232,15 +235,81 @@ function Select(p: { account: Account; onPick: (id: SpeciesId) => void; onBack: 
 
 // ---------------- prep ----------------
 
+type Invest = Partial<Record<Stat, number>>;
+
+/** One-tap builds. They raise the "up" stats and lower the "down" stats, within caps and your Gene Points. */
+const PRESETS: { id: string; label: string; up: Stat[]; down: Stat[] }[] = [
+  { id: 'balanced', label: 'Balanced', up: [], down: [] },
+  { id: 'brute', label: 'Brute', up: ['strength', 'health'], down: ['intelligence'] },
+  { id: 'sprinter', label: 'Sprinter', up: ['mobility', 'stamina'], down: ['intelligence'] },
+  { id: 'thinker', label: 'Thinker', up: ['intelligence', 'senses'], down: ['strength'] },
+];
+
+function presetInvest(species: SpeciesId, gp: number, preset: (typeof PRESETS)[number]): Invest {
+  const d = SPECIES[species];
+  const invest: Invest = {};
+  let points = gp;
+  for (const s of preset.down) {
+    const lower = Math.min(2, d.baseStats[s] - STAT_FLOOR);
+    if (lower > 0) { invest[s] = -lower; points += lower; }
+  }
+  let progressed = true;
+  while (points > 0 && progressed) {
+    progressed = false;
+    for (const s of preset.up) {
+      if (points <= 0) break;
+      const cur = invest[s] ?? 0;
+      if (d.baseStats[s] + cur >= d.caps[s]) continue;
+      invest[s] = cur + 1;
+      points--;
+      progressed = true;
+    }
+  }
+  return invest;
+}
+
+function sameInvest(a: Invest, b: Invest): boolean {
+  return STATS.every((s) => (a[s] ?? 0) === (b[s] ?? 0));
+}
+
+/** What raising one stat costs, read from the engine's upkeep calculation (not hardcoded). */
+function upkeepRules(species: SpeciesId, s: Stat): string[] {
+  const base = SPECIES[species].baseStats[s];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let k = 1; k <= 8; k++) {
+    const u = statUpkeep(species, s, base + k);
+    const per = k === 1 ? 'per point' : `per ${k} points`;
+    if (u.hunger > 0 && !seen.has('hunger')) { seen.add('hunger'); out.push(`+${u.hunger} Hunger each turn ${per}`); }
+    if (u.energy > 0 && !seen.has('energy')) { seen.add('energy'); out.push(`+${u.energy} Energy each turn ${per}`); }
+    if (u.move > 0 && !seen.has('move')) { seen.add('move'); out.push(`+${u.move} Energy per move ${per}`); }
+    if (u.growUp > 0 && !seen.has('growUp')) { seen.add('growUp'); out.push(`+${u.growUp} turn${u.growUp === 1 ? '' : 's'} to grow up ${per}`); }
+  }
+  return out;
+}
+
+function upkeepSummary(species: SpeciesId, stats: Record<Stat, number>): string {
+  const u = upkeepOf(species, stats);
+  const parts: string[] = [];
+  if (u.hunger) parts.push(`+${u.hunger} Hunger each turn`);
+  if (u.energy) parts.push(`+${u.energy} Energy each turn`);
+  if (u.move) parts.push(`+${u.move} Energy per move`);
+  if (u.growUp) parts.push(`+${u.growUp} turn${u.growUp === 1 ? '' : 's'} to grow up`);
+  return parts.length ? parts.join(', ') : 'none yet';
+}
+
 function Prep(p: {
-  account: Account; species: SpeciesId; invest: Partial<Record<Stat, number>>;
-  setInvest: (v: Partial<Record<Stat, number>>) => void; traits: TraitId[]; setTraits: (t: TraitId[]) => void;
+  account: Account; species: SpeciesId; invest: Invest;
+  setInvest: (v: Invest) => void; traits: TraitId[]; setTraits: (t: TraitId[]) => void;
   onBorn: () => void; onBack: () => void;
 }) {
   const d = SPECIES[p.species];
+  const gp = p.account.gp[p.species];
   const spent = STATS.reduce((a, s) => a + (p.invest[s] ?? 0), 0);
-  const left = p.account.gp[p.species] - spent;
+  const left = gp - spent;
   const slots = traitSlots(p.account);
+  const full = p.traits.length >= slots;
+  const stats = Object.fromEntries(STATS.map((s) => [s, d.baseStats[s] + (p.invest[s] ?? 0)])) as Record<Stat, number>;
   const bump = (s: Stat, delta: number) => {
     const cur = p.invest[s] ?? 0;
     const next = cur + delta;
@@ -250,13 +319,24 @@ function Prep(p: {
   };
   const toggle = (t: TraitId) => {
     if (p.traits.includes(t)) p.setTraits(p.traits.filter((x) => x !== t));
-    else if (p.traits.length < slots) p.setTraits([...p.traits, t]);
+    else if (!full) p.setTraits([...p.traits, t]);
   };
   return (
     <div className="screen pad stack">
       <h2>{d.emoji} {d.name}</h2>
       <p className="small dim">Goal: {d.goal}</p>
       <h3>Stats &middot; {left} Gene Points left</h3>
+      <p className="small dim">Raising a stat costs 1 Gene Point and makes you hungrier or more tired.</p>
+      <p className="small dim">Lower a stat to get a Gene Point back.</p>
+      <div className="row">
+        {PRESETS.map((pr) => {
+          const inv = presetInvest(p.species, gp, pr);
+          return (
+            <button key={pr.id} type="button" className={`btn chipbtn ${sameInvest(inv, p.invest) ? 'on' : ''}`}
+              onClick={() => p.setInvest(inv)}>{pr.label}</button>
+          );
+        })}
+      </div>
       <div>
         {STATS.map((s) => {
           const add = p.invest[s] ?? 0;
@@ -264,37 +344,52 @@ function Prep(p: {
           const canDown = val > STAT_FLOOR;
           const canUp = val < d.caps[s] && left > 0;
           const upWhy = val >= d.caps[s] ? 'At the species cap' : left <= 0 ? 'No Gene Points left' : '';
+          const rules = upkeepRules(p.species, s);
           return (
-            <div className="statrow" key={s}>
-              <span>{STAT_LABEL[s]}</span>
-              <span className="dim small">{STAT_FLOOR}-{d.caps[s]}</span>
-              <span className="statval">
-                <b style={{ color: add > 0 ? 'var(--good)' : add < 0 ? 'var(--warn)' : 'var(--accent)' }}>{val}</b>
-                {add !== 0 && <span className={`small arrow ${add > 0 ? 'up' : 'down'}`}> {add > 0 ? '▲' : '▼'} ({add > 0 ? '+' : ''}{add})</span>}
-              </span>
-              <span className="row">
-                <button className="btn mini center" disabled={!canDown} title={canDown ? 'Lower: refunds a Gene Point' : 'Already at the minimum'} onClick={() => bump(s, -1)}>-</button>
-                <button className="btn mini center" disabled={!canUp} title={upWhy || 'Raise: costs a Gene Point'} onClick={() => bump(s, 1)}>+</button>
-              </span>
+            <div key={s}>
+              <div className="statrow">
+                <span>{STAT_LABEL[s]}</span>
+                <span className="dim small">{STAT_FLOOR}-{d.caps[s]}</span>
+                <span className="statval">
+                  <b style={{ color: add > 0 ? 'var(--good)' : add < 0 ? 'var(--warn)' : 'var(--accent)' }}>{val}</b>
+                  {add !== 0 && <span className={`small arrow ${add > 0 ? 'up' : 'down'}`}> {add > 0 ? '▲' : '▼'} ({add > 0 ? '+' : ''}{add})</span>}
+                </span>
+                <span className="row">
+                  <button className="btn mini center" disabled={!canDown} title={canDown ? 'Lower: refunds a Gene Point' : 'Already at the minimum'} onClick={() => bump(s, -1)}>-</button>
+                  <button className="btn mini center" disabled={!canUp} title={upWhy || 'Raise: costs a Gene Point'} onClick={() => bump(s, 1)}>+</button>
+                </span>
+              </div>
+              <div className="upkeep small dim">{rules.length ? `Upkeep above ${d.baseStats[s]}: ${rules.join('; ')}` : 'No upkeep'}</div>
             </div>
           );
         })}
       </div>
-      <p className="small dim">Every point above the baseline has an upkeep: more Satiety or Energy drain, or slower growing up. Lowering a stat (down to {STAT_FLOOR}) refunds a Gene Point to spend elsewhere, so you can build a brute, a sprinter or a thinker.</p>
-      <h3>Heirloom {slots > 1 ? 'traits' : 'trait'} (pick up to {slots})</h3>
+      <p className="small dim">Upkeep now: {upkeepSummary(p.species, stats)}.</p>
+      <h3>Mutations (pick up to {slots})</h3>
+      {full && <p className="small warnline">Slots full ({p.traits.length}/{slots}). Unpick one to swap.</p>}
       {TRAIT_IDS.map((t) => {
         const tr = TRAITS[t];
-        const awakened = p.account.traitUses[t] >= TIER2_USES;
+        const uses = p.account.traitUses[t];
+        const awakened = uses >= TIER2_USES;
         const on = p.traits.includes(t);
+        const blocked = full && !on;
         return (
-          <div key={t} className={`card pick`} style={on ? { borderColor: 'var(--accent)' } : undefined} onClick={() => toggle(t)}>
+          <button key={t} type="button" className="card pick mutbtn" disabled={blocked}
+            title={blocked ? `Slots full (${p.traits.length}/${slots}). Unpick one to swap.` : undefined}
+            style={on ? { borderColor: 'var(--accent)' } : undefined} onClick={() => toggle(t)}>
             <div className="row spread">
               <b>{on ? '✔ ' : ''}{tr.name}</b>
-              <span className="badge">{tr.stat} &middot; {awakened ? 'Tier II' : `Tier I (${p.account.traitUses[t]}/${TIER2_USES} uses)`}</span>
+              <span className="badge">{tr.stat} &middot; {awakened ? 'Tier II' : 'Tier I'}</span>
             </div>
             <div className="small">{tr.benefit}{awakened ? `. ${tr.tier2}` : ''}</div>
             <div className="small dim">Price: {tr.price}</div>
-          </div>
+            {!awakened && (
+              <>
+                <div className="small dim" style={{ marginTop: 4 }}>Upgrades at {TIER2_USES} {tr.unit} ({uses}/{TIER2_USES})</div>
+                <div className="meter"><div style={{ width: `${Math.min(100, (uses / TIER2_USES) * 100)}%` }} /></div>
+              </>
+            )}
+          </button>
         );
       })}
       <button className="btn primary center" onClick={p.onBorn}>Be born</button>
@@ -305,15 +400,35 @@ function Prep(p: {
 
 // ---------------- birth ----------------
 
+const BIRTH_ROW_HELP: Record<string, string> = {
+  Season: 'When in the year you are born. The later the season, the sooner winter arrives.',
+  Start: 'How well set up you are. A strong start adds Health and Hunger relief; a weak one takes them away.',
+  Place: 'Where you begin and how many predators live nearby.',
+};
+
 function Birth(p: {
-  account: Account; birth: BirthRoll; rerolled: boolean; onReroll: () => void; onBegin: () => void; onBack: () => void;
+  account: Account; birth: BirthRoll; species: SpeciesId; rerolled: boolean; onReroll: () => void; onBegin: () => void; onBack: () => void;
 }) {
+  const [open, setOpen] = useState<string | null>(null);
   const canReroll = p.account.level >= 3 && !p.rerolled;
+  const firstLife = p.account.lives === 0;
   return (
     <div className="screen pad stack">
-      <h2>Your birth <span className={`badge ${p.birth.luck}`}>{p.birth.luck}</span></h2>
-      {p.birth.lines.map((l, i) => <p key={i}>{l}</p>)}
-      <button className="btn primary center" onClick={p.onBegin}>Begin life</button>
+      <h2>Birth luck <span className={`badge ${p.birth.luck}`}>{p.birth.luck}</span></h2>
+      {firstLife && (
+        <p className="small dim">Season is when in the year you begin, Start is how well set up you are, and Place is where you land and who lives nearby (tap a label for more).</p>
+      )}
+      {birthRows(p.birth).map((r) => (
+        <div key={r.label} className="birthrow">
+          <button type="button" className="rowlabel" aria-expanded={open === r.label}
+            title={BIRTH_ROW_HELP[r.label]} onClick={() => setOpen(open === r.label ? null : r.label)}>{r.label}</button>
+          <div>
+            <div>{r.text}</div>
+            {open === r.label && <div className="small dim">{BIRTH_ROW_HELP[r.label]}</div>}
+          </div>
+        </div>
+      ))}
+      <button className="btn primary center" onClick={p.onBegin}>Into the wild {SPECIES[p.species].emoji}</button>
       {canReroll && <button className="btn center" onClick={p.onReroll}>Reroll this birth (once)</button>}
       <button className="btn center" onClick={p.onBack}>Back</button>
     </div>
@@ -333,18 +448,23 @@ function Bar(p: { cls: string; label: string; value: number; max: number }) {
   );
 }
 
-function Chips(p: { a: Snap; b: Snap }) {
-  const items: [string, number, string][] = [
-    ['Health', p.b.hp - p.a.hp, 'hp'], ['Satiety', p.b.satiety - p.a.satiety, 'sat'],
-    ['Energy', p.b.energy - p.a.energy, 'en'],
+function Chips(p: { a: Snap; b: Snap; hpCause?: string }) {
+  // Each chip shows the change in the number on screen (arrow = direction) and is coloured by whether it is good or bad.
+  const hp = p.b.hp - p.a.hp;
+  const hunger = p.a.satiety - p.b.satiety; // Hunger is the inverse of how full the animal is
+  const energy = p.b.energy - p.a.energy;
+  const items: { name: string; d: number; cls: string; good: boolean }[] = [
+    { name: hp < 0 && p.hpCause ? `Health (${p.hpCause})` : 'Health', d: hp, cls: 'hp', good: hp > 0 },
+    { name: 'Hunger', d: hunger, cls: 'hun', good: hunger < 0 },
+    { name: 'Energy', d: energy, cls: 'en', good: energy > 0 },
   ];
-  if (p.a.herd !== p.b.herd) items.push(['Herd', p.b.herd - p.a.herd, 'herd']);
-  const shown = items.filter((i) => i[1] !== 0);
+  if (p.a.herd !== p.b.herd) items.push({ name: 'Herd', d: p.b.herd - p.a.herd, cls: 'herd', good: p.b.herd > p.a.herd });
+  const shown = items.filter((i) => i.d !== 0);
   if (!shown.length) return <div className="chips"><span className="chip zero">no change</span></div>;
   return (
     <div className="chips">
-      {shown.map(([n, d, c]) => (
-        <span key={n} className={`chip ${c} ${d > 0 ? 'up' : 'down'}`}>{n} {d > 0 ? '▲' : '▼'} {d > 0 ? '+' : ''}{d}</span>
+      {shown.map((i) => (
+        <span key={i.name} className={`chip ${i.cls} ${i.good ? 'good' : 'bad'}`}>{i.name} {i.d > 0 ? '▲' : '▼'} {i.d > 0 ? '+' : ''}{i.d}</span>
       ))}
     </div>
   );
@@ -367,7 +487,7 @@ function ReportBody(p: { r: TurnReport; ended: RunState['ended'] }) {
   const { r } = p;
   return (
     <div className="report">
-      <div className="rhead">{r.turn === 0 ? 'Your birth' : `Turn ${r.turn}: ${r.action}`}</div>
+      <div className="rhead">{r.turn === 0 ? 'Birth luck' : `Turn ${r.turn}: ${r.action}`}</div>
       {r.threat && (
         <div className={`verdict ${r.threat.outcome}`}>
           {PRED_EMOJI[r.threat.pred]} {r.threat.name}:{' '}
@@ -380,11 +500,43 @@ function ReportBody(p: { r: TurnReport; ended: RunState['ended'] }) {
         <>
           <div className="rhead next">{r.turn === 0 ? 'The first moments' : `Turn ${r.turn + 1} begins`}</div>
           {r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}
-          <Chips a={r.afterAction} b={r.afterArrival} />
+          <Chips a={r.afterAction} b={r.afterArrival} hpCause={[...new Set((r.envHits ?? []).map((h) => h.chip))].join(', ') || undefined} />
         </>
       )}
       {p.ended && r.arrival.length > 0 && r.arrival.map((l, i) => <div key={`a${i}`} className="rl">{l}</div>)}
     </div>
+  );
+}
+
+function FlashScreen(p: { tone: string; title: string; children: ReactNode; button: ReactNode; onContinue: () => void }) {
+  return (
+    <div className={`screen flash ${p.tone}`}>
+      <div className="flashtitle">{p.title}</div>
+      <div className="flashbody">{p.children}</div>
+      <button className="btn primary center" autoFocus onClick={p.onContinue}>{p.button}</button>
+    </div>
+  );
+}
+
+/** Heading for a turn where the world, not an action, cost Health. Names the cause and the number. */
+function worldHeading(r: TurnReport): string {
+  if (r.envHits?.length) return r.envHits.map((h) => `${h.cause}: -${h.hp} Health`).join(' · ');
+  const lost = r.afterAction.hp - r.afterArrival.hp;
+  return `Lost ${lost} Health`;
+}
+
+function UnlockFlash(p: { species: NonNullable<DebriefReport['newSpecies']>; onContinue: () => void }) {
+  const names = p.species.map((u) => SPECIES[u.id].name).join(' and ');
+  return (
+    <FlashScreen tone="gold" title={`New species: ${names}`} button="Continue" onContinue={p.onContinue}>
+      {p.species.map((u) => (
+        <div key={u.id} className="report">
+          <div style={{ fontSize: 56, textAlign: 'center' }}>{SPECIES[u.id].emoji}</div>
+          <div className="rl">{u.condition}</div>
+          <div className="small dim">Find it in the species list when you press Begin.</div>
+        </div>
+      ))}
+    </FlashScreen>
   );
 }
 
@@ -439,15 +591,12 @@ function Play(p: {
 
   if (flash && rep) {
     return (
-      <div className={`screen flash ${tone}`}>
-        <div className="flashtitle">
-          {tone === 'gold' ? 'Victory' : tone === 'bad' ? (run.ended ? 'Life over' : 'That hurt') : tone === 'good' ? 'Close call, survived' : tone === 'warn' ? 'The world pushes back' : 'Result'}
-        </div>
-        <div className="flashbody"><ReportBody r={rep} ended={run.ended} /></div>
-        <button className="btn primary center" autoFocus onClick={() => setAcked(run.turnsTaken)}>
-          {run.ended ? 'Continue' : `Continue to turn ${rep.turn + 1}`} <span className="dim">(Enter)</span>
-        </button>
-      </div>
+      <FlashScreen tone={tone}
+        title={tone === 'gold' ? 'Victory' : tone === 'bad' ? (run.ended ? 'Life over' : 'That hurt') : tone === 'good' ? 'Close call, survived' : tone === 'warn' ? worldHeading(rep) : 'Result'}
+        button={<>{run.ended ? 'Continue' : `Continue to turn ${rep.turn + 1}`} <span className="dim">(Enter)</span></>}
+        onContinue={() => setAcked(run.turnsTaken)}>
+        <ReportBody r={rep} ended={run.ended} />
+      </FlashScreen>
     );
   }
 
@@ -484,7 +633,7 @@ function Play(p: {
       <div className="screen">
         <div className="hud">
           <Bar cls="hp" label="Health" value={view.hp} max={view.maxHp} />
-          <Bar cls="sat" label="Satiety" value={view.satiety} max={100} />
+          <Bar cls="hun" label="Hunger" value={100 - view.satiety} max={100} />
           <Bar cls="en" label="Energy" value={view.energy} max={100} />
           <Bar cls="safe" label="Safety" value={view.safety} max={100} />
         </div>
@@ -493,7 +642,7 @@ function Play(p: {
         </div>
         <div className="goal">Goal: {view.goalLine}{view.nest ? ` Nest: ${view.nest.pups} pups, ${view.nest.turnsLeft} turns to wean.` : ''}</div>
         <div className="look">
-          <span className="dim">{view.foodHere}. View tier {view.tier}.</span>
+          <span className="dim">{view.foodHere}. <span title="How much you can see about nearby places">Sight: tier {view.tier} of 3.</span></span>
           <div className="nb">
             {view.neighbours.map((n) => (
               <span key={n.id}>
@@ -511,7 +660,7 @@ function Play(p: {
           {run.ended ? (
             <>
               <p style={{ margin: 0 }}><b>{run.ended.type === 'win' ? 'Victory.' : run.ended.type === 'old_age' ? 'A full life.' : 'Life over.'}</b> {run.ended.cause}</p>
-              <button className="btn primary center" onClick={p.onFinish}>See the debrief</button>
+              <button className="btn primary center" onClick={p.onFinish}>Your legacy</button>
             </>
           ) : picking ? (
             <>
@@ -589,12 +738,12 @@ function Debrief(p: {
       <h3>Experience</h3>
       <table>
         <tbody>
-          <tr><td>Survival</td><td className="num">{pay.survival}</td></tr>
+          <tr><td>Time survived</td><td className="num">{pay.survival}</td></tr>
           <tr><td>Goal progress</td><td className="num">{pay.goal}</td></tr>
-          <tr><td>Goal success and speed</td><td className="num">{pay.feats}</td></tr>
-          <tr><td>Discoveries</td><td className="num">{pay.discoveries}</td></tr>
-          <tr><td>Ending multiplier</td><td className="num">&times;{pay.endingMult}</td></tr>
-          <tr><td>Species difficulty</td><td className="num">&times;{pay.difficulty}</td></tr>
+          <tr><td>Goal bonus</td><td className="num">{pay.feats}</td></tr>
+          <tr><td>New discoveries</td><td className="num">{pay.discoveries}</td></tr>
+          <tr><td>Ending bonus</td><td className="num">&times;{pay.endingMult}</td></tr>
+          <tr><td>Difficulty bonus</td><td className="num">&times;{pay.difficulty}</td></tr>
           <tr><td><b>Account XP</b></td><td className="num"><b className="arrow up">▲ +{pay.xp}</b></td></tr>
           <tr><td>Gene Points ({SPECIES[p.species].name})</td><td className="num"><span className="arrow up">▲ +{pay.gpGain}</span></td></tr>
         </tbody>

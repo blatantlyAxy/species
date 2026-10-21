@@ -3,7 +3,7 @@
 A turn-based evolution game. Live one animal's life at a time, die often, come back stranger.
 This is the text-sim prototype described in the Evolution Game design doc.
 
-New to the game's terms (Gene Points, heirloom traits, birth luck, visibility tiers and so on)? See [GLOSSARY.md](GLOSSARY.md).
+New to the game's terms (Gene Points, mutations, birth luck, visibility tiers and so on)? See [GLOSSARY.md](GLOSSARY.md).
 
 ## Run it
 
@@ -31,7 +31,7 @@ Deploy to Cloudflare Pages: connect the repo, build command `npm run build`, out
 
 Species: Field Mouse, Deer, Wolf (wolf unlocks through codex familiarity or a deer win).
 Eight locations, about twenty events, six stats, three needs meters, birth luck, Gene Points,
-three heirloom traits (Zigzag, Keen Nose, Thick Coat), codex familiarity, account XP and perks,
+three mutations (Zigzag, Keen Nose, Thick Coat), codex familiarity, account XP and perks,
 visibility tiers, and saves in local storage.
 
 Not yet: random world events (storms, quakes), the hidden mayfly (the unlock is detected, the species
