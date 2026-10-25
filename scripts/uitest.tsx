@@ -33,6 +33,41 @@ const clickText = async (t: string) => {
   await click(el);
 };
 
+let cur = root;
+const remount = async (storage: Record<string, string>) => {
+  await act(async () => { cur.unmount(); });
+  localStorage.clear();
+  for (const [k, v] of Object.entries(storage)) localStorage.setItem(k, v);
+  const d = document.createElement('div'); document.body.appendChild(d);
+  cur = createRoot(d);
+  await act(async () => { cur.render(React.createElement(App)); });
+};
+const has = (t: string) => document.body.textContent!.includes(t);
+const q1 = (sel: string) => document.querySelector(sel) as HTMLElement | null;
+const savedAccount = () => JSON.parse(localStorage.getItem('species_account_v1') ?? '{}');
+const liveActions = () => (Array.from(document.querySelectorAll('[data-panel="actions"] button')) as HTMLButtonElement[])
+  .filter((b) => !b.disabled && !b.textContent!.startsWith('Cancel'));
+const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+
+// mutation slots: with one slot, picking one greys out the rest until it is unpicked
+const exerciseMutations = async () => {
+  const traitBtns = () => buttons().filter((b) => b.classList.contains('mutbtn')) as HTMLButtonElement[];
+  if (traitBtns().length < 2) throw new Error('no mutation buttons');
+  if (traitBtns().some((b) => b.disabled)) throw new Error('mutation buttons disabled before any pick');
+  if (has('Slots full')) throw new Error('slots-full hint shown too early');
+  await click(traitBtns()[0]);
+  const others = traitBtns().slice(1);
+  if (!others.every((b) => b.disabled)) throw new Error('unpicked mutations should be disabled when slots are full');
+  if (traitBtns()[0].disabled) throw new Error('picked mutation must stay clickable so it can be unpicked');
+  if (!has('Slots full (1/1). Unpick one to swap.')) throw new Error('slots-full hint missing');
+  await click(traitBtns()[0]);
+  if (traitBtns().some((b) => b.disabled) || has('Slots full')) throw new Error('slots did not free up after unpicking');
+  for (const w of ['Mutations (pick up to', 'Upgrades at 10', 'Raising a stat costs 1 Gene Point', 'Upkeep']) {
+    if (!has(w)) throw new Error('prep screen missing: ' + w);
+  }
+  await clickText('Sprinter');
+};
+
 await clickText('Send feedback');
 if (!document.body.textContent!.includes('Send feedback') || !document.querySelector('textarea')) throw new Error('feedback screen missing');
 await clickText('Bug');
@@ -54,26 +89,21 @@ console.log('feedback ok');
 let flashes = 0;
 for (const species of ['Field Mouse', 'Deer']) {
   await clickText('Begin');
-  await clickText(species);
-  {
-    // mutation slots: with one slot, picking one greys out the rest until it is unpicked
-    const traitBtns = () => buttons().filter((b) => b.classList.contains('mutbtn')) as HTMLButtonElement[];
-    if (traitBtns().length < 2) throw new Error('no mutation buttons');
-    if (traitBtns().some((b) => b.disabled)) throw new Error('mutation buttons disabled before any pick');
-    if (document.body.textContent!.includes('Slots full')) throw new Error('slots-full hint shown too early');
-    await click(traitBtns()[0]);
-    const others = traitBtns().slice(1);
-    if (!others.every((b) => b.disabled)) throw new Error('unpicked mutations should be disabled when slots are full');
-    if (traitBtns()[0].disabled) throw new Error('picked mutation must stay clickable so it can be unpicked');
-    if (!document.body.textContent!.includes('Slots full (1/1). Unpick one to swap.')) throw new Error('slots-full hint missing');
-    await click(traitBtns()[0]);
-    if (traitBtns().some((b) => b.disabled) || document.body.textContent!.includes('Slots full')) throw new Error('slots did not free up after unpicking');
-    for (const w of ['Mutations (pick up to', 'Upgrades at 10', 'Raising a stat costs 1 Gene Point', 'Upkeep']) {
-      if (!document.body.textContent!.includes(w)) throw new Error('prep screen missing: ' + w);
-    }
-    await clickText('Sprinter');
+  if (species === 'Field Mouse') {
+    // the first life: intro cards, then straight to the mouse's birth. No species or prep screen.
+    if (!has('One life')) throw new Error('the first Begin should show the intro');
+    await clickText('Skip');
+    if (has('Choose a species')) throw new Error('first life must skip the species screen');
+    if (!has('Birth luck')) throw new Error('first life should land on the birth screen');
+    await clickText('Customise your field mouse');
+    await exerciseMutations();
+    await clickText('Done');
+  } else {
+    await clickText(species);
+    await exerciseMutations();
+    await clickText('Be born');
+    if (has('Customise your')) throw new Error('only the first life offers Customise');
   }
-  await clickText('Be born');
   {
     const t = document.body.textContent!;
     for (const w of ['Birth luck', 'Season', 'Start', 'Place', 'Into the wild']) if (!t.includes(w)) throw new Error('birth screen missing: ' + w);
@@ -204,17 +234,126 @@ console.log('flash screens seen:', flashes);
   await clickText('Main menu');
 }
 
+// tutorial: intro cards, first-life setup, tips and the Settings switch
+{
+  const SEED = (o: object) => ({ species_account_v1: JSON.stringify(o) });
+  await remount({});
+  await clickText('Begin');
+  if (!has('One life') || !q1('[data-intro="0"]')) throw new Error('intro card 1 missing');
+  if (!buttons().some((b) => b.textContent === 'Skip')) throw new Error('every card needs Skip');
+  await clickText('Next');
+  if (!has('Dying makes me stronger')) throw new Error('intro card 2 missing');
+  if (!buttons().some((b) => b.textContent === 'Skip')) throw new Error('every card needs Skip');
+  await clickText('Next');
+  if (!has('Read the world') || !buttons().some((b) => b.textContent === 'Skip')) throw new Error('intro card 3 missing');
+  await clickText('Begin my first life');
+  if (has('Choose a species') || !has('Birth luck')) throw new Error('first life should go straight to the birth');
+  if (savedAccount().tutorial?.introSeen !== true) throw new Error('intro seen flag not saved');
+  // Customise must not give a free reroll of the birth
+  const birthText = () => Array.from(document.querySelectorAll('.birthrow')).map((e) => e.textContent).join('|');
+  const before = birthText();
+  await clickText('Customise your field mouse');
+  if (!has('Gene Points left')) throw new Error('Customise should open the prep screen');
+  await clickText('Done');
+  if (birthText() !== before) throw new Error('Customise must not reroll the birth');
+  await clickText('Back');
+  if (!has('Begin') || has('Birth luck')) throw new Error('Back from a first birth returns to the menu');
+
+  // a player who skips the intro still gets the Balanced mouse
+  await remount({});
+  await clickText('Begin');
+  await clickText('Skip');
+  if (!has('Birth luck') || has('Choose a species')) throw new Error('skipping the intro still starts the first life');
+  await clickText('Into the wild');
+
+  // first turn tip, then Got it
+  if (!q1('[data-panel="tip"]') || !has('Hunger, Energy and Safety change as time passes')) throw new Error('first-turn tip missing');
+  if (q1('[data-panel="actions"] .flashcard')) throw new Error('a tip must never cover the buttons');
+  if (!q1('[data-panel="tip"] a[href*="GLOSSARY"]')) throw new Error('tip needs a ? link to the glossary');
+  await clickText('Got it');
+  if (q1('[data-panel="tip"]')) throw new Error('Got it should clear the tip');
+  if (savedAccount().tutorial?.tipsSeen?.first_turn !== true) throw new Error('seen flag not saved');
+
+  // the first card is held until you tap it, and explains itself
+  await click(liveActions()[0]);
+  if (!q1('.flashcard') || !has('This is what just happened. Tap to go on.')) throw new Error('flashcard tip missing');
+  await wait(1400);
+  if (!q1('.flashcard')) throw new Error('the first card must wait for a tap');
+  await click(q1('.flashcard')!);
+  if (q1('[data-panel="tip"]') && has('This is what just happened')) throw new Error('flashcard tip should be seen after the tap');
+  if (savedAccount().tutorial?.tipsSeen?.flashcard !== true) throw new Error('flashcard seen flag not saved');
+
+  // play on: each tip shows at most once per account, and nothing blocks the buttons
+  const shownTips = new Map<string, number>();
+  let steps = 0;
+  while (!has('Your legacy') && steps++ < 120) {
+    const tip = q1('[data-panel="tip"] .tiptext');
+    if (tip) shownTips.set(tip.textContent!, (shownTips.get(tip.textContent!) ?? 0) + 1);
+    if (q1('.flashcard')) { await click(q1('.flashcard')!); continue; }
+    await click(liveActions()[Math.floor(Math.random() * liveActions().length)]);
+  }
+  // Hide tips turns them all off
+  await remount({});
+  await clickText('Begin'); await clickText('Skip'); await clickText('Into the wild');
+  await clickText('Hide tips');
+  if (q1('[data-panel="tip"]') || savedAccount().tutorial?.tipsOff !== true) throw new Error('Hide tips should turn tips off');
+  steps = 0;
+  while (!has('Your legacy') && steps++ < 120) {
+    if (q1('[data-panel="tip"]')) throw new Error('no tips once they are hidden');
+    if (q1('.flashcard')) { await click(q1('.flashcard')!); continue; }
+    await click(liveActions()[Math.floor(Math.random() * liveActions().length)]);
+  }
+  await clickText('Your legacy');
+  if (has('New species')) await clickText('Continue');
+  await clickText('Main menu');
+  // Settings shows the switch, and switching it off brings tips back
+  await clickText('Settings');
+  if (!q1('[role="switch"][aria-checked="true"]') || !has("Don't show tips")) throw new Error('Settings should show the tips switch on');
+  await click(q1('[role="switch"]')!);
+  if (savedAccount().tutorial?.tipsOff !== false || !q1('[role="switch"][aria-checked="false"]')) throw new Error('the switch should turn tips back on');
+  await clickText('Back');
+
+  // a save from before the tutorial that has played already skips the intro
+  await remount(SEED({ lives: 3, xp: 120, level: 2 }));
+  await clickText('Begin');
+  if (has('One life')) throw new Error('an experienced save must not see the intro');
+  if (!has('Choose a species')) throw new Error('an experienced save keeps the species screen');
+  console.log('tutorial flow ok');
+}
+
+// first-death coaching: once, with three parts
+{
+  const { createAccount, rollBirth, startRun } = await import('../src/engine');
+  const mkDeadRun = (cause: string, killedBy?: string) => {
+    const acc = createAccount();
+    const r = startRun(acc, 'mouse', {}, [], rollBirth('mouse', 5), 11).run;
+    r.ended = { type: 'death', cause, killedBy: killedBy as any };
+    r.report = { ...r.report!, turn: 3, action: 'Bolt for cover' };
+    r.age = 3; r.turnsTaken = 3;
+    return JSON.stringify(r);
+  };
+  await remount({ species_account_v1: JSON.stringify(createAccount()), species_run_v1: mkDeadRun('A hawk killed you.', 'hawk') });
+  await clickText('See how your last life ended');
+  await clickText('Your legacy');
+  const card = q1('[data-panel="coaching"]');
+  if (!card) throw new Error('the first death should add a coaching card');
+  for (const w of ['What happened.', 'A hawk caught me.', 'Next time.', 'cover', 'My Gene Points.']) {
+    if (!card.textContent!.includes(w)) throw new Error('coaching card missing: ' + w);
+  }
+  if (savedAccount().tutorial?.coached !== true) throw new Error('coached flag not saved');
+  const saved = localStorage.getItem('species_account_v1')!;
+  await remount({ species_account_v1: saved, species_run_v1: mkDeadRun('You starved.') });
+  await clickText('See how your last life ended');
+  await clickText('Your legacy');
+  if (q1('[data-panel="coaching"]')) throw new Error('coaching appears only once');
+  console.log('coaching ok');
+}
+
 // unlock flash: seed an account that has already won as a deer, so the next finished life unlocks the wolf
 {
-  await act(async () => { root.unmount(); });
-  localStorage.clear();
-  localStorage.setItem('species_account_v1', JSON.stringify({ wins: { deer: 1 } }));
-  const d3 = document.createElement('div'); document.body.appendChild(d3);
-  const root3 = createRoot(d3);
-  await act(async () => { root3.render(React.createElement(App)); });
+  await remount({ species_account_v1: JSON.stringify({ wins: { deer: 1 } }) });
   await clickText('Begin');
-  await clickText('Field Mouse');
-  await clickText('Be born');
+  await clickText('Skip');
   await clickText('Into the wild');
   let n = 0;
   while (n++ < 300) {

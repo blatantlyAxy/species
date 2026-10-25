@@ -1,7 +1,8 @@
 import { LEVEL_XP, MASTERY_STEPS, PERKS, SPECIES, TIER2_USES, TRAITS, levelForXp } from './data';
 import { progressOf } from './run';
+import { coachingFor } from './tutorial';
 import type {
-  Account, CodexId, DebriefReport, PayoutBreakdown, RunState, SpeciesId, TraitId,
+  Account, CodexId, DebriefReport, PayoutBreakdown, RunState, SpeciesId, TipId, TraitId, TutorialState,
 } from './types';
 
 void LEVEL_XP;
@@ -18,6 +19,39 @@ export function createAccount(): Account {
     gp: { mouse: SPECIES.mouse.startGp, deer: SPECIES.deer.startGp, wolf: 0 },
     wins: { mouse: 0, deer: 0, wolf: 0 },
     traitUses: { zigzag: 0, keen_nose: 0, thick_coat: 0 },
+    tutorial: createTutorial(),
+  };
+}
+
+export const TIP_IDS: TipId[] = ['first_turn', 'meter_low', 'predator', 'flashcard', 'travel', 'hurt', 'season'];
+
+export function createTutorial(): TutorialState {
+  return {
+    introSeen: false, tipsOff: false, coached: false,
+    tipsSeen: Object.fromEntries(TIP_IDS.map((t) => [t, false])) as Record<TipId, boolean>,
+  };
+}
+
+/**
+ * Bring a saved account up to date. Missing fields get defaults. A save from before the tutorial
+ * existed that has already played a life skips the intro and the first-death coaching.
+ */
+export function normalizeAccount(raw: any): Account {
+  const base = createAccount();
+  if (!raw || typeof raw !== 'object') return base;
+  const t = createTutorial();
+  const saved = raw.tutorial && typeof raw.tutorial === 'object' ? raw.tutorial : null;
+  if (!saved && (raw.lives ?? 0) > 0) { t.introSeen = true; t.coached = true; }
+  return {
+    ...base, ...raw,
+    unlocked: { ...base.unlocked, ...raw.unlocked },
+    hiddenFound: { ...base.hiddenFound, ...raw.hiddenFound },
+    codex: { ...base.codex, ...raw.codex },
+    mastery: { ...base.mastery, ...raw.mastery },
+    gp: { ...base.gp, ...raw.gp },
+    wins: { ...base.wins, ...raw.wins },
+    traitUses: { ...base.traitUses, ...raw.traitUses },
+    tutorial: { ...t, ...saved, tipsSeen: { ...t.tipsSeen, ...saved?.tipsSeen } },
   };
 }
 
@@ -123,9 +157,16 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
     unlocks.push('Something stirred in the margins of your codex. A hidden species has been found. (Not playable in this prototype.)');
   }
 
+  // the first death gets one coaching card, once
+  let coaching: DebriefReport['coaching'];
+  if (end.type === 'death' && !acc.tutorial.coached) {
+    coaching = coachingFor(run);
+    acc.tutorial.coached = true;
+  }
+
   const report: DebriefReport = {
     species, end, turns: run.age, payout, levelBefore, levelAfter: acc.level, newPerks, famChanges,
-    masteryBefore, masteryAfter, unlocks, traitTierUps, notes, newSpecies,
+    masteryBefore, masteryAfter, unlocks, traitTierUps, notes, newSpecies, coaching,
   };
   return { account: acc, report };
 }

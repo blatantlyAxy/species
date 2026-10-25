@@ -2,14 +2,19 @@ import { Feedback, VersionFooter } from './Support';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  CODEX_NOTES, PERKS, SPECIES, STAT_FLOOR, STATS, STAT_LABEL, TIER2_USES, TRAITS, TRAIT_IDS, MASTERY_STEPS,
-  act, birthRows, createAccount, finishRun, getView, masteryLevel, rollBirth, startRun, statUpkeep, traitSlots, upkeepOf, xpForLevel,
+  CODEX_NOTES, FIRST_SPECIES, INTRO_CARDS, PERKS, SPECIES, STAT_FLOOR, STATS, STAT_LABEL, TIER2_USES, TRAITS, TRAIT_IDS, MASTERY_STEPS,
+  act, birthRows, createAccount, finishRun, getView, masteryLevel, normalizeAccount, rollBirth, startRun, statUpkeep,
+  tipText, traitSlots, triggeredTips, upkeepOf, xpForLevel,
 } from '../engine';
 import type {
-  Account, Action, BirthRoll, CodexId, DebriefReport, RunState, RunView, Snap, SpeciesId, Stat, TraitId, TurnReport,
+  Account, Action, BirthRoll, CodexId, DebriefReport, RunState, RunView, Snap, SpeciesId, Stat, TipId, TraitId, TurnReport,
+  TutorialState,
 } from '../engine';
 
-type Screen = 'feedback' | 'menu' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account';
+type Screen =
+  | 'feedback' | 'menu' | 'intro' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account' | 'settings';
+
+const GLOSSARY_URL = 'https://github.com/blatantlyAxy/species/blob/main/GLOSSARY.md';
 
 const ACCOUNT_KEY = 'species_account_v1';
 const RUN_KEY = 'species_run_v1';
@@ -18,20 +23,7 @@ const PRED_EMOJI: Record<string, string> = { hawk: '🦅', fox: '🦊', wolf: '�
 function loadAccount(): Account {
   try {
     const raw = localStorage.getItem(ACCOUNT_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      const base = createAccount();
-      return {
-        ...base, ...p,
-        unlocked: { ...base.unlocked, ...p.unlocked },
-        hiddenFound: { ...base.hiddenFound, ...p.hiddenFound },
-        codex: { ...base.codex, ...p.codex },
-        mastery: { ...base.mastery, ...p.mastery },
-        gp: { ...base.gp, ...p.gp },
-        wins: { ...base.wins, ...p.wins },
-        traitUses: { ...base.traitUses, ...p.traitUses },
-      };
-    }
+    if (raw) return normalizeAccount(JSON.parse(raw));
   } catch { /* ignore */ }
   return createAccount();
 }
@@ -63,6 +55,7 @@ export function App() {
   const [birth, setBirth] = useState<BirthRoll | null>(null);
   const [rerolled, setRerolled] = useState(false);
   const [report, setReport] = useState<DebriefReport | null>(null);
+  const [customising, setCustomising] = useState(false);
 
   useEffect(() => safeSet(ACCOUNT_KEY, JSON.stringify(account)), [account]);
   useEffect(() => safeSet(RUN_KEY, run ? JSON.stringify(run) : null), [run]);
@@ -75,17 +68,37 @@ export function App() {
     run ? `Run: ${run.species}, turn ${run.age}, ${run.loc}, hp ${run.hp}` : 'No run in progress',
   ].join('. ');
 
-  const goSelect = () => setScreen('select');
+  const setTutorial = (f: (t: TutorialState) => TutorialState) => setAccount((a) => ({ ...a, tutorial: f(a.tutorial) }));
+
+  /** The first life skips the species and prep screens: the lowest species, Balanced, no mutation. */
+  const goSelect = () => {
+    if (account.lives === 0) {
+      setSpecies(FIRST_SPECIES);
+      setInvest({});
+      setTraits([]);
+      setCustomising(false);
+      if (!account.tutorial.introSeen) setScreen('intro');
+      else beBorn(FIRST_SPECIES);
+      return;
+    }
+    setScreen('select');
+  };
+
+  const finishIntro = () => {
+    setTutorial((t) => ({ ...t, introSeen: true }));
+    beBorn(FIRST_SPECIES);
+  };
 
   const choose = (id: SpeciesId) => {
+    setCustomising(false);
     setSpecies(id);
     setInvest({});
     setTraits((t) => t.slice(0, traitSlots(account)));
     setScreen('prep');
   };
 
-  const beBorn = () => {
-    setBirth(rollBirth(species, newSeed()));
+  const beBorn = (sp: SpeciesId = species) => {
+    setBirth(rollBirth(sp, newSeed()));
     setRerolled(false);
     setScreen('birth');
   };
@@ -97,6 +110,7 @@ export function App() {
       setAccount(res.account);
       setRun(res.run);
       setReport(null);
+      setCustomising(false);
       setScreen('play');
     } catch (e) {
       alert((e as Error).message);
@@ -128,20 +142,27 @@ export function App() {
       {screen === 'menu' && (
         <Menu account={account} hasRun={!!run && !run.ended} hasEnded={!!run?.ended}
           onContinue={() => { if (run) setSpecies(run.species); setScreen('play'); }} onStart={goSelect}
-          onCodex={() => setScreen('codex')} onAccount={() => setScreen('account')} onReset={resetAll} eraseArmed={eraseArmed} />
+          onCodex={() => setScreen('codex')} onAccount={() => setScreen('account')} onSettings={() => setScreen('settings')}
+          onReset={resetAll} eraseArmed={eraseArmed} />
       )}
+      {screen === 'intro' && <Intro onDone={finishIntro} />}
       {screen === 'select' && <Select account={account} onPick={choose} onBack={() => setScreen('menu')} />}
       {screen === 'prep' && (
         <Prep account={account} species={species} invest={invest} setInvest={setInvest}
-          traits={traits} setTraits={setTraits} onBorn={beBorn} onBack={goSelect} />
+          traits={traits} setTraits={setTraits} customising={customising}
+          onBorn={() => (customising ? setScreen('birth') : beBorn())}
+          onBack={() => (customising ? setScreen('birth') : goSelect())} />
       )}
       {screen === 'birth' && birth && (
         <Birth account={account} birth={birth} species={species} rerolled={rerolled}
           onReroll={() => { setBirth(rollBirth(species, newSeed())); setRerolled(true); }}
-          onBegin={begin} onBack={() => setScreen('prep')} />
+          onCustomise={account.lives === 0 ? () => { setCustomising(true); setScreen('prep'); } : undefined}
+          onBegin={begin} onBack={() => setScreen(account.lives === 0 ? 'menu' : 'prep')} />
       )}
       {screen === 'play' && run && (
-        <Play account={account} run={run} onRun={setRun} onFinish={finish} onMenu={() => setScreen('menu')} />
+        <Play account={account} run={run} onRun={setRun} onFinish={finish} onMenu={() => setScreen('menu')}
+          onTipSeen={(id) => setTutorial((t) => (t.tipsSeen[id] ? t : { ...t, tipsSeen: { ...t.tipsSeen, [id]: true } }))}
+          onHideTips={() => setTutorial((t) => ({ ...t, tipsOff: true }))} />
       )}
       {screen === 'unlock' && report?.newSpecies?.length ? (
         <UnlockFlash species={report.newSpecies} onContinue={() => setScreen('debrief')} />
@@ -152,6 +173,10 @@ export function App() {
       )}
       {screen === 'codex' && <Codex account={account} onBack={() => setScreen('menu')} />}
       {screen === 'account' && <AccountScreen account={account} onBack={() => setScreen('menu')} />}
+      {screen === 'settings' && (
+        <SettingsScreen account={account} onBack={() => setScreen('menu')}
+          onTipsOff={(v) => setTutorial((t) => ({ ...t, tipsOff: v }))} />
+      )}
       {screen === 'feedback' && <Feedback context={fbContext} onClose={() => setScreen(fbFrom)} />}
       {screen !== 'feedback' && <VersionFooter onFeedback={openFeedback} />}
     </div>
@@ -168,7 +193,7 @@ function levelProgress(a: Account): number {
 
 function Menu(p: {
   account: Account; hasRun: boolean; hasEnded: boolean; onContinue: () => void; onStart: () => void;
-  onCodex: () => void; onAccount: () => void; onReset: () => void; eraseArmed: boolean;
+  onCodex: () => void; onAccount: () => void; onSettings: () => void; onReset: () => void; eraseArmed: boolean;
 }) {
   return (
     <>
@@ -186,9 +211,47 @@ function Menu(p: {
         <button className="btn primary" onClick={p.onStart}>Begin</button>
         <button className="btn" onClick={p.onCodex}>Codex</button>
         <button className="btn" onClick={p.onAccount}>Account and perks</button>
+        <button className="btn" onClick={p.onSettings}>Settings</button>
         <button className="btn" onClick={p.onReset}>{p.eraseArmed ? 'Tap again to erase everything' : 'Erase save'}</button>
       </div>
     </>
+  );
+}
+
+// ---------------- intro ----------------
+
+function Intro(p: { onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const card = INTRO_CARDS[i];
+  const last = i === INTRO_CARDS.length - 1;
+  return (
+    <div className="screen pad stack introcard" data-intro={i}>
+      <div className="title-art">{card.emoji}</div>
+      <h2 style={{ textAlign: 'center' }}>{card.title}</h2>
+      <p className="introtext">{card.text}</p>
+      <div className="dots" aria-label={`Card ${i + 1} of ${INTRO_CARDS.length}`}>
+        {INTRO_CARDS.map((_, k) => <span key={k} className={k === i ? 'on' : ''} />)}
+      </div>
+      <button className="btn primary center" autoFocus onClick={() => (last ? p.onDone() : setI(i + 1))}>
+        {last ? 'Begin my first life' : 'Next'}
+      </button>
+      <button className="btn center" onClick={p.onDone}>Skip</button>
+    </div>
+  );
+}
+
+function SettingsScreen(p: { account: Account; onTipsOff: (v: boolean) => void; onBack: () => void }) {
+  const off = p.account.tutorial.tipsOff;
+  return (
+    <div className="screen pad stack">
+      <h2>Settings</h2>
+      <button className={`btn switch ${off ? 'on' : ''}`} role="switch" aria-checked={off} onClick={() => p.onTipsOff(!off)}>
+        <span>Don't show tips</span>
+        <span className="switchstate">{off ? 'On' : 'Off'}</span>
+      </button>
+      <p className="small dim">Tips are the one-line hints that appear the first time something comes up. Turning this on hides them all.</p>
+      <button className="btn center" onClick={p.onBack}>Back</button>
+    </div>
   );
 }
 
@@ -301,7 +364,7 @@ function upkeepSummary(species: SpeciesId, stats: Record<Stat, number>): string 
 function Prep(p: {
   account: Account; species: SpeciesId; invest: Invest;
   setInvest: (v: Invest) => void; traits: TraitId[]; setTraits: (t: TraitId[]) => void;
-  onBorn: () => void; onBack: () => void;
+  customising?: boolean; onBorn: () => void; onBack: () => void;
 }) {
   const d = SPECIES[p.species];
   const gp = p.account.gp[p.species];
@@ -392,8 +455,8 @@ function Prep(p: {
           </button>
         );
       })}
-      <button className="btn primary center" onClick={p.onBorn}>Be born</button>
-      <button className="btn center" onClick={p.onBack}>Back</button>
+      <button className="btn primary center" onClick={p.onBorn}>{p.customising ? 'Done' : 'Be born'}</button>
+      <button className="btn center" onClick={p.onBack}>{p.customising ? 'Back to my birth' : 'Back'}</button>
     </div>
   );
 }
@@ -407,7 +470,8 @@ const BIRTH_ROW_HELP: Record<string, string> = {
 };
 
 function Birth(p: {
-  account: Account; birth: BirthRoll; species: SpeciesId; rerolled: boolean; onReroll: () => void; onBegin: () => void; onBack: () => void;
+  account: Account; birth: BirthRoll; species: SpeciesId; rerolled: boolean; onReroll: () => void;
+  onCustomise?: () => void; onBegin: () => void; onBack: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const canReroll = p.account.level >= 3 && !p.rerolled;
@@ -430,6 +494,7 @@ function Birth(p: {
       ))}
       <button className="btn primary center" onClick={p.onBegin}>Into the wild {SPECIES[p.species].emoji}</button>
       {canReroll && <button className="btn center" onClick={p.onReroll}>Reroll this birth (once)</button>}
+      {p.onCustomise && <button className="linkbtn" onClick={p.onCustomise}>Customise your {SPECIES[p.species].name.toLowerCase()}</button>}
       <button className="btn center" onClick={p.onBack}>Back</button>
     </div>
   );
@@ -696,8 +761,23 @@ function Flashcard(p: { run: RunState; hold: boolean; leaving: boolean; onDismis
   );
 }
 
+/** A one-line first-time tip, near the Actions panel and never in the way of it. */
+function TipStrip(p: { text: string; onGotIt: () => void; onHide: () => void }) {
+  return (
+    <div className="tipstrip" role="note" data-panel="tip">
+      <span className="tiptext">{p.text}</span>
+      <span className="tipacts">
+        <a className="linkbtn" href={GLOSSARY_URL} target="_blank" rel="noopener noreferrer" title="What do these words mean? Opens the glossary" aria-label="Open the glossary">?</a>
+        <button className="linkbtn" onClick={p.onGotIt}>Got it</button>
+        <button className="linkbtn" onClick={p.onHide}>Hide tips</button>
+      </span>
+    </div>
+  );
+}
+
 function Play(p: {
   account: Account; run: RunState; onRun: (r: RunState) => void; onFinish: () => void; onMenu: () => void;
+  onTipSeen: (id: TipId) => void; onHideTips: () => void;
 }) {
   const { run } = p;
   const view = useMemo(() => getView(run), [run]);
@@ -713,16 +793,24 @@ function Play(p: {
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cardPending = !!rep && rep.turn > 0 && acked < run.turnsTaken;
-  const hold = !!rep && isNotable(rep, run.ended); // hurt, threat, death and victory wait for you
   const shown = cardPending && held ? held : run;
   const shownView = useMemo(() => getView(shown), [shown]);
 
+  // first-time tips: the first triggered tip you have not seen, unless you turned tips off
+  const tutorial = p.account.tutorial;
+  const tipCtx = { run: shown, view: shownView, cardUp: cardPending };
+  const activeTip: TipId | null = tutorial.tipsOff ? null : triggeredTips(tipCtx).find((t) => !tutorial.tipsSeen[t]) ?? null;
+  const { onTipSeen } = p;
+  // hurt, threat, death and victory cards wait for you, and so does the card that explains cards
+  const hold = (!!rep && isNotable(rep, run.ended)) || activeTip === 'flashcard';
+
   const doAct = useCallback((id: string, target?: string) => {
+    if (activeTip) onTipSeen(activeTip);
     setPicking(null);
     setCardH(actionsRef.current?.offsetHeight ?? 0);
     setHeld(run);
     p.onRun(act(run, id, target));
-  }, [run, p]);
+  }, [run, p, activeTip, onTipSeen]);
 
   const choose = useCallback((a: Action) => {
     if (a.disabled) return;
@@ -733,11 +821,12 @@ function Play(p: {
   /** Fade the card up into the Turn log. The panels show the new turn as the card leaves. */
   const dismiss = useCallback((instant = false) => {
     if (!cardPending || leaving) return;
+    if (activeTip) onTipSeen(activeTip);
     setHeld(null);
     if (instant || prefersReducedMotion()) { setAcked(run.turnsTaken); return; }
     setLeaving(true);
     leaveTimer.current = setTimeout(() => { setLeaving(false); setAcked(run.turnsTaken); }, CARD_LEAVE_MS);
-  }, [cardPending, leaving, run.turnsTaken]);
+  }, [cardPending, leaving, run.turnsTaken, activeTip, onTipSeen]);
 
   useEffect(() => () => { if (leaveTimer.current) clearTimeout(leaveTimer.current); }, []);
 
@@ -790,6 +879,9 @@ function Play(p: {
       <div className="screen">
         <MetersPanel view={shownView} />
         <SurroundingsPanel view={shownView} />
+        {activeTip && (
+          <TipStrip text={tipText(activeTip, tipCtx)} onGotIt={() => onTipSeen(activeTip)} onHide={p.onHideTips} />
+        )}
         <div className={`actions ${cardPending ? 'hascard' : ''}`} data-panel="actions" ref={actionsRef}
           style={cardPending && cardH ? { height: cardH } : undefined}>
           {cardPending ? (
@@ -872,6 +964,14 @@ function Debrief(p: {
     <div className="screen pad stack">
       <h2>{title}</h2>
       <p>{r.end.cause} You lived {r.turns} turn{r.turns === 1 ? '' : 's'}.</p>
+      {r.coaching && (
+        <div className="card coach" data-panel="coaching">
+          <b>What I take with me</b>
+          <p><b>What happened.</b> {r.coaching.ended}</p>
+          <p><b>Next time.</b> {r.coaching.suggestion}</p>
+          <p><b>My Gene Points.</b> I have {p.account.gp[p.species]} to spend on the next screen. {r.coaching.spend} Every point I raise costs upkeep, and lowering a stat gives a point back.</p>
+        </div>
+      )}
       <h3>Experience</h3>
       <table>
         <tbody>

@@ -184,6 +184,16 @@ export interface Perk {
   text: string;
 }
 
+export type TipId = 'first_turn' | 'meter_low' | 'predator' | 'flashcard' | 'travel' | 'hurt' | 'season';
+
+/** Everything the tutorial remembers. Lives on the account, so it carries across lives and species. */
+export interface TutorialState {
+  introSeen: boolean;
+  tipsOff: boolean;
+  tipsSeen: Record<TipId, boolean>;
+  coached: boolean;
+}
+
 export interface Account {
   version: 1;
   xp: number;
@@ -196,6 +206,7 @@ export interface Account {
   gp: Record<SpeciesId, number>;
   wins: Record<SpeciesId, number>;
   traitUses: Record<TraitId, number>;
+  tutorial: TutorialState;
 }
 
 export interface Action {
@@ -269,4 +280,15 @@ export interface DebriefReport {
   notes: string[];
   /** Playable species unlocked by this run, with the condition that triggered it. */
   newSpecies?: { id: SpeciesId; condition: string }[];
+  /** One-off coaching after the first death. */
+  coaching?: Coaching;
+}
+
+export interface Coaching {
+  /** What ended the life, one line. */
+  ended: string;
+  /** One suggestion tied to the cause. */
+  suggestion: string;
+  /** Which stats to think about with the Gene Points on the next prep screen. */
+  spend: string;
 }

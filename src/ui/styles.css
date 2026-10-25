@@ -224,6 +224,30 @@ td.num, th.num { text-align: right; }
 .oldturn { margin-top: 4px; }
 .oldlabel { font-size: 11px; color: #5d6380; }
 
+/* Tutorial: intro cards, tips, settings switch, coaching card */
+.introcard { text-align: center; }
+.introcard .title-art { padding-top: 6px; }
+.introtext { font-size: 16px; line-height: 1.55; margin: 4px 6px 10px; }
+.dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 4px; }
+.dots span { width: 10px; height: 10px; border-radius: 50%; background: #0c0e15; border: 2px solid var(--bezel-hi); }
+.dots span.on { background: var(--accent); border-color: var(--accent); }
+.tipstrip {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  margin: 0 12px; padding: 8px 10px; border: 2px dashed var(--accent); border-radius: 8px;
+  background: #1c1a10; font-size: 12px; line-height: 1.4; animation: freshin 0.7s ease-out;
+}
+.tiptext { color: var(--ink); flex: 1 1 220px; }
+.tipacts { display: flex; gap: 6px; align-items: center; }
+.tipacts .linkbtn { padding: 4px 6px; }
+.btn.switch { display: flex; justify-content: space-between; align-items: center; }
+.btn.switch .switchstate { background: #0c0e15; border-radius: 10px; padding: 1px 10px; font-size: 12px; color: var(--dim); }
+.btn.switch.on { border-color: var(--accent); }
+.btn.switch.on .switchstate { color: var(--accent); }
+.card.coach { border-color: var(--accent); background: #2c2a14; display: grid; gap: 4px; }
+.card.coach p { margin: 0; font-size: 13px; }
+.card.coach > b { color: var(--accent); text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; }
+@media (prefers-reduced-motion: reduce) { .tipstrip { animation: none; } }
+
 /* Flashcard: the result of the action you just took, in the Actions panel */
 .actions.hascard { display: block; position: relative; overflow: visible; }
 .flashcard {

@@ -26,6 +26,7 @@ Deploy to Cloudflare Pages: connect the repo, build command `npm run build`, out
   - `meta.ts` account, death payout, codex familiarity, unlocks
 - `src/ui/` React text UI with a two-screen layout (scene on top, menu below)
 - `scripts/sim.ts` balance bot, `scripts/trace.ts` prints one life turn by turn
+- `scripts/tutorial.ts` checks the tutorial rules (tip triggers, coaching, old-save migration); `scripts/uitest.tsx` is the UI smoke test (run both with `npx tsx`)
 
 ## In this first playable
 

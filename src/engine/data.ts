@@ -112,6 +112,16 @@ export const TRAITS: Record<TraitId, { id: TraitId; name: string; stat: string; 
 };
 
 export const TRAIT_IDS = Object.keys(TRAITS) as TraitId[];
+
+/** The first life is always the lowest species in the roster. */
+export const FIRST_SPECIES: SpeciesId = 'mouse';
+
+/** Shown once, before the first life. Draft wording; the language pass will finalise it. */
+export const INTRO_CARDS: { title: string; emoji: string; text: string }[] = [
+  { title: 'One life', emoji: '🐭', text: 'I get one life, and it is short. I eat, I hide, I move on. Sooner or later something finds me.' },
+  { title: 'Dying makes me stronger', emoji: '🧬', text: 'When I die, what I learned stays. The next life starts stronger: Gene Points to spend, mutations to carry, a codex that fills.' },
+  { title: 'Read the world', emoji: '👁️', text: 'Watch my Hunger, Energy and Safety. Every choice costs something, and danger shows its odds before I act.' },
+];
 export const TIER2_USES = 10;
 
 export const MASTERY_STEPS = [0, 30, 80, 160];

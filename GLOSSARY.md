@@ -1,6 +1,6 @@
 # Species: glossary
 
-Every in-game term, what it means, and how it works in the current build (v0.5.1).
+Every in-game term, what it means, and how it works in the current build (v0.6.0).
 The engine code is the source of truth. Items marked **Planned** are in the design doc but not built yet.
 
 When you add a feature that introduces a new term, add it here in the same change.
@@ -10,6 +10,7 @@ When you add a feature that introduces a new term, add it here in the same chang
 - [The loop](#the-loop)
 - [Life and turns](#life-and-turns)
 - [The Play screen](#the-play-screen)
+- [Tutorial](#tutorial)
 - [Stats](#stats)
 - [Needs meters](#needs-meters)
 - [Rolls and threats](#rolls-and-threats)
@@ -86,6 +87,36 @@ One screen, five **panels**. "Screen" is kept for whole screens (menu, prep, bir
 - With reduced motion on, the card disappears instantly instead of animating.
 
 **New species flash** — The one remaining full-screen flash: gold, shown just before the debrief when a run unlocks a species. See [Unlock flash](#the-loop).
+
+---
+
+## Tutorial
+
+New players learn in three intro cards, then through one-line tips the first time each mechanic appears, and the first death explains what to do next. Everything can be skipped, nothing blocks play, and the first death is never softened. All wording is a draft in a narrator-as-the-animal voice (first person, short sentences); the language pass will finalise it. All of it is saved on the account (`tutorial` in the save), so it carries across lives and species.
+
+**Intro cards** — Three cards shown once, the first time you press Begin on a new account: *One life*, *Dying makes me stronger*, *Read the world*. Every card has a **Skip** button, which skips them all. Skipping does not change the first life. A save from before v0.6.0 that has already played a life never sees them.
+
+**First life** — On a new account the first life is always the lowest species in the roster (the field mouse for now). The species and prep screens are skipped and the **Balanced** preset is applied (baseline stats, no mutation). The birth screen offers a **Customise your field mouse** link to the prep screen; coming back from it keeps the same birth, so customising is not a free reroll. From the second life on, Begin opens the species screen and prep as usual.
+
+**Tip** — A one-line hint in a dashed strip above the Actions panel, shown the first time its trigger happens. Only one shows at a time, and it never covers the buttons. A tip is marked seen when you act or tap **Got it**. Links on a tip: **?** opens the glossary on GitHub, **Got it**, and **Hide tips**.
+
+| Tip | Trigger |
+|---|---|
+| First turn | The life has just begun, before your first action |
+| Meter low | Hunger above 70, Energy below 25, or Health at a third of its maximum or less |
+| First predator | A threat is on the screen. The text lists the responses your species really has, and mentions the odds only once Odds Readout is unlocked |
+| First flashcard | Your first flashcard. This card waits for a tap instead of fading by itself |
+| First move to a new place | The turn after you travel, lead or follow. The text mentions the danger and food marks only if your sight tier is 1 or more |
+| First time hurt | A turn that cost you Health |
+| First season change | The turn a new season begins |
+
+A flashcard on screen shows only its own tip. The other tips wait until the new turn is showing.
+
+**Don't show tips** — A switch on the **Settings** screen (Menu, then Settings), and what **Hide tips** on a tip does. Turns off all tips. Turning it back off brings back only the tips you have not seen.
+
+**First-death coaching** — A card at the top of the debrief ("What I take with me") after your first death, once ever. Three parts: what ended the life in one line, one suggestion tied to the cause, and what to think about when spending Gene Points on the next prep screen. Causes covered: hawk, fox, wolf pack, starvation, cold, sickness, a deer's kick, a pack-mate challenge, and a fallback. A win or old age does not use it up. It is separate from the tips, so Don't show tips does not hide it.
+
+**Not included** — A scripted run, a separate practice life, forced steps, or an easier first life.
 
 ---
 
