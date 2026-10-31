@@ -1,6 +1,6 @@
 # Species: glossary
 
-Every in-game term, what it means, and how it works in the current build (v0.6.0).
+Every in-game term, what it means, and how it works in the current build (v0.7.0).
 The engine code is the source of truth. Items marked **Planned** are in the design doc but not built yet.
 
 When you add a feature that introduces a new term, add it here in the same change.
@@ -142,6 +142,8 @@ Six stats, each with a species baseline and a species cap. Stats are set at birt
 **Upkeep** — The price of raising a stat. Every point above baseline costs something each turn, so you cannot max everything. Strength, Stamina and Intelligence points together add 1 Hunger per turn for every 2 points. Senses points add 1 Energy drain per 2 points. Mobility points add 1 Energy per move for every 2 points. Health and Intelligence points each add a turn before adulthood. The prep screen shows each stat's rule and your build's total, both read from the engine (`upkeepOf` in `run.ts`).
 
 **Build** — A mix of raised and lowered stats and chosen mutations. Examples from playtests: the sprinter (Mobility), the brute (Strength, low Intelligence), the thinker (Intelligence and Senses).
+
+**Stat bar** — How a stat is shown on the prep screen: a row of segments, one per value from 1 to the species cap. The **notch** (a yellow mark after a segment) is the starting value, and upkeep begins above it. Filled segments above the notch are green (Gene Points spent). Emptied segments below it are amber and hatched (Gene Points refunded). Segments past what your Gene Points left can reach are dim and dashed (**locked**); tapping one does nothing. Tap any segment to set the stat to that value, so one tap can spend or refund several points; the Gene Points counter updates at once. The minus and plus buttons at the ends make single steps. Each bar is also a slider: Left and Down arrows lower, Right and Up raise, Home goes to 1, End to the highest value you can afford. Presets move the bars.
 
 **Build presets** — Optional chips on the prep screen (Balanced, Brute, Sprinter, Thinker) that set the stats in one tap. Each lowers a stat or two for a refund, then spends your Gene Points on its favourite stats up to their caps. You can still adjust afterwards.
 

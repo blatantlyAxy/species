@@ -49,8 +49,76 @@ const liveActions = () => (Array.from(document.querySelectorAll('[data-panel="ac
   .filter((b) => !b.disabled && !b.textContent!.startsWith('Cancel'));
 const wait = (ms: number) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
 
+// prep stat bars: segments, notch, tap to set, refund and spend colours, locked segments, keys, minus and plus
+const exerciseStatBars = async () => {
+  const sliders = () => Array.from(document.querySelectorAll('[role="slider"]')) as HTMLElement[];
+  const segs = (sl: HTMLElement) => Array.from(sl.querySelectorAll('.seg')) as HTMLElement[];
+  const val = (sl: HTMLElement) => Number(sl.getAttribute('aria-valuenow'));
+  const left = () => Number(/(-?\d+) Gene Points left/.exec(document.body.textContent!)![1]);
+  const tap = (sl: HTMLElement, i: number) => click(segs(sl)[i - 1]);
+  const key = (sl: HTMLElement, k: string) => act(async () => { sl.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: k, bubbles: true })); });
+  const stateOf = (sl: HTMLElement, i: number) => segs(sl)[i - 1].getAttribute('data-state');
+  const pm = (sl: HTMLElement, label: string) => (document.querySelector(`button[aria-label="${label} ${sl.getAttribute('aria-label')}"]`)) as HTMLButtonElement;
+
+  if (sliders().length !== 6) throw new Error('expected six stat bars, got ' + sliders().length);
+  await clickText('Balanced');
+  const start = left();
+  for (const sl of sliders()) {
+    const cap = Number(sl.getAttribute('aria-valuemax'));
+    if (segs(sl).length !== cap) throw new Error('bar should have one segment per value up to the cap');
+    if (sl.querySelectorAll('.seg.base').length !== 1) throw new Error('bar needs exactly one notch');
+    if (sl.getAttribute('aria-valuemin') !== '1') throw new Error('slider min should be the stat floor');
+  }
+  // tap a segment above the notch: spends Gene Points, segments go green
+  const a = sliders()[0];
+  const v0 = val(a);
+  const capA = Number(a.getAttribute('aria-valuemax'));
+  const up = Math.min(2, capA - v0, start);
+  if (up < 1) throw new Error('test needs room above the start');
+  await tap(a, v0 + up);
+  if (val(a) !== v0 + up || left() !== start - up) throw new Error('tap above the notch should spend ' + up);
+  for (let i = v0 + 1; i <= v0 + up; i++) if (stateOf(a, i) !== 'spent') throw new Error('spent segment should be green');
+  // tap back down to the start: refunded in full, nothing amber
+  await tap(a, v0);
+  if (val(a) !== v0 || left() !== start) throw new Error('tapping the start value should undo the spend');
+  // tap segment 1: everything below the notch is refunded (amber) and the points come back
+  await tap(a, 1);
+  if (val(a) !== 1 || left() !== start + (v0 - 1)) throw new Error('tap on segment 1 should refund down to the floor');
+  for (let i = 2; i <= v0; i++) if (stateOf(a, i) !== 'refund') throw new Error('refunded segment should be amber');
+  // minus and plus still work
+  if (!pm(a, 'Lower').disabled) throw new Error('minus must be disabled at the floor');
+  await click(pm(a, 'Raise'));
+  if (val(a) !== 2) throw new Error('plus should raise by one');
+  await click(pm(a, 'Lower'));
+  if (val(a) !== 1) throw new Error('minus should lower by one');
+  // arrow keys, Home, End on the slider
+  await key(a, 'ArrowRight');
+  if (val(a) !== 2) throw new Error('ArrowRight should raise');
+  await key(a, 'ArrowLeft');
+  if (val(a) !== 1) throw new Error('ArrowLeft should lower');
+  const leftBeforeEnd = left();
+  await key(a, 'End');
+  if (val(a) !== Math.min(capA, 1 + leftBeforeEnd)) throw new Error('End should jump to the highest reachable value');
+  await key(a, 'Home');
+  if (val(a) !== 1) throw new Error('Home should go to the floor');
+  // spend everything, then a segment out of reach is locked and tapping it does nothing
+  await clickText('Balanced');
+  for (const sl of sliders()) { while (left() > 0 && val(sl) < Number(sl.getAttribute('aria-valuemax'))) await key(sl, 'ArrowRight'); }
+  if (left() !== 0) throw new Error('could not spend all the Gene Points');
+  const lockedBar = sliders().find((sl) => segs(sl).some((sg) => sg.getAttribute('data-state') === 'locked'));
+  if (!lockedBar) throw new Error('with no Gene Points left some segment should be locked');
+  const idx = segs(lockedBar).findIndex((sg) => sg.getAttribute('data-state') === 'locked') + 1;
+  const before = val(lockedBar);
+  await tap(lockedBar, idx);
+  if (val(lockedBar) !== before || left() !== 0) throw new Error('tapping a locked segment must do nothing');
+  await clickText('Balanced');
+  if (left() !== start) throw new Error('Balanced preset should restore the Gene Points');
+  console.log('stat bars ok');
+};
+
 // mutation slots: with one slot, picking one greys out the rest until it is unpicked
 const exerciseMutations = async () => {
+  await exerciseStatBars();
   const traitBtns = () => buttons().filter((b) => b.classList.contains('mutbtn')) as HTMLButtonElement[];
   if (traitBtns().length < 2) throw new Error('no mutation buttons');
   if (traitBtns().some((b) => b.disabled)) throw new Error('mutation buttons disabled before any pick');

@@ -361,6 +361,38 @@ function upkeepSummary(species: SpeciesId, stats: Record<Stat, number>): string 
   return parts.length ? parts.join(', ') : 'none yet';
 }
 
+/**
+ * A stat as a row of segments, 1 to the species cap. A notch after the starting value marks where upkeep begins.
+ * Filled above the notch = Gene Points spent (green); emptied below it = refunded (amber); past what the Gene Points
+ * left can reach = locked (dim). Tap a segment to set the value. Also a slider: arrow keys, Home, End.
+ */
+function StatBar(p: { label: string; base: number; cap: number; value: number; left: number; onSet: (v: number) => void }) {
+  const { base, cap, value, left } = p;
+  const reach = Math.min(cap, value + left);
+  const onKey = (e: React.KeyboardEvent) => {
+    let t: number | null = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') t = value + 1;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') t = value - 1;
+    else if (e.key === 'Home') t = STAT_FLOOR;
+    else if (e.key === 'End') t = reach;
+    if (t === null) return;
+    e.preventDefault();
+    p.onSet(Math.max(STAT_FLOOR, Math.min(reach, t)));
+  };
+  return (
+    <div className="segbar" role="slider" tabIndex={0} aria-label={p.label}
+      aria-valuemin={STAT_FLOOR} aria-valuemax={cap} aria-valuenow={value}
+      aria-valuetext={`${value} of ${cap}, starts at ${base}`} onKeyDown={onKey}>
+      {Array.from({ length: cap }, (_, k) => {
+        const i = k + 1;
+        const state = i <= value ? (i > base ? 'spent' : 'kept') : i <= base ? 'refund' : i > reach ? 'locked' : 'open';
+        return <span key={i} data-seg={i} data-state={state} aria-hidden="true"
+          className={`seg ${state}${i === base ? ' base' : ''}`} onClick={() => p.onSet(i)} />;
+      })}
+    </div>
+  );
+}
+
 function Prep(p: {
   account: Account; species: SpeciesId; invest: Invest;
   setInvest: (v: Invest) => void; traits: TraitId[]; setTraits: (t: TraitId[]) => void;
@@ -373,13 +405,14 @@ function Prep(p: {
   const slots = traitSlots(p.account);
   const full = p.traits.length >= slots;
   const stats = Object.fromEntries(STATS.map((s) => [s, d.baseStats[s] + (p.invest[s] ?? 0)])) as Record<Stat, number>;
-  const bump = (s: Stat, delta: number) => {
-    const cur = p.invest[s] ?? 0;
-    const next = cur + delta;
-    if (d.baseStats[s] + next < STAT_FLOOR || d.baseStats[s] + next > d.caps[s]) return;
-    if (delta > 0 && left <= 0) return;
-    p.setInvest({ ...p.invest, [s]: next });
+  /** Set a stat to a value (tap on a segment, arrow keys, or the minus and plus buttons). Same budget rules as ever. */
+  const setStat = (s: Stat, target: number) => {
+    const cur = d.baseStats[s] + (p.invest[s] ?? 0);
+    if (target === cur || target < STAT_FLOOR || target > d.caps[s]) return;
+    if (target - cur > left) return;
+    p.setInvest({ ...p.invest, [s]: target - d.baseStats[s] });
   };
+  const bump = (s: Stat, delta: number) => setStat(s, d.baseStats[s] + (p.invest[s] ?? 0) + delta);
   const toggle = (t: TraitId) => {
     if (p.traits.includes(t)) p.setTraits(p.traits.filter((x) => x !== t));
     else if (!full) p.setTraits([...p.traits, t]);
@@ -391,6 +424,7 @@ function Prep(p: {
       <h3>Stats &middot; {left} Gene Points left</h3>
       <p className="small dim">Raising a stat costs 1 Gene Point and makes you hungrier or more tired.</p>
       <p className="small dim">Lower a stat to get a Gene Point back.</p>
+      <p className="small dim">Tap a bar to set a stat. The mark shows where you start; upkeep begins above it. Green is Gene Points spent, amber is refunded.</p>
       <div className="row">
         {PRESETS.map((pr) => {
           const inv = presetInvest(p.species, gp, pr);
@@ -410,17 +444,18 @@ function Prep(p: {
           const rules = upkeepRules(p.species, s);
           return (
             <div key={s}>
-              <div className="statrow">
+              <div className="stathead">
                 <span>{STAT_LABEL[s]}</span>
-                <span className="dim small">{STAT_FLOOR}-{d.caps[s]}</span>
                 <span className="statval">
                   <b style={{ color: add > 0 ? 'var(--good)' : add < 0 ? 'var(--warn)' : 'var(--accent)' }}>{val}</b>
+                  <span className="dim small"> / {d.caps[s]}</span>
                   {add !== 0 && <span className={`small arrow ${add > 0 ? 'up' : 'down'}`}> {add > 0 ? '▲' : '▼'} ({add > 0 ? '+' : ''}{add})</span>}
                 </span>
-                <span className="row">
-                  <button className="btn mini center" disabled={!canDown} title={canDown ? 'Lower: refunds a Gene Point' : 'Already at the minimum'} onClick={() => bump(s, -1)}>-</button>
-                  <button className="btn mini center" disabled={!canUp} title={upWhy || 'Raise: costs a Gene Point'} onClick={() => bump(s, 1)}>+</button>
-                </span>
+              </div>
+              <div className="statctl">
+                <button className="btn mini center" disabled={!canDown} aria-label={`Lower ${STAT_LABEL[s]}`} title={canDown ? 'Lower: refunds a Gene Point' : 'Already at the minimum'} onClick={() => bump(s, -1)}>-</button>
+                <StatBar label={STAT_LABEL[s]} base={d.baseStats[s]} cap={d.caps[s]} value={val} left={left} onSet={(v) => setStat(s, v)} />
+                <button className="btn mini center" disabled={!canUp} aria-label={`Raise ${STAT_LABEL[s]}`} title={upWhy || 'Raise: costs a Gene Point'} onClick={() => bump(s, 1)}>+</button>
               </div>
               <div className="upkeep small dim">{rules.length ? `Upkeep above ${d.baseStats[s]}: ${rules.join('; ')}` : 'No upkeep'}</div>
             </div>
