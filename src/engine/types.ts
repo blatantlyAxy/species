@@ -23,6 +23,9 @@ export interface Location {
   food: number; // baseline food richness
   cover: number; // 1 (open) .. 5 (dense)
   adj: string[];
+  /** Map position, 0 to 100 on both axes. The minimap and any later scene read these. */
+  x: number;
+  y: number;
   blurb: string;
   harsh?: boolean; // brutal in winter
   sheltered?: boolean; // safe from winter cold
@@ -171,6 +174,8 @@ export interface RunState {
   last: string[];
   history: string[];
   ended: RunEnd | null;
+  /** Places this animal has stood in. Feeds the minimap fog. Missing on runs saved before 1.0. */
+  visited?: string[];
   visibilityTier: number;
   showOdds: boolean;
   report: TurnReport | null;
@@ -194,13 +199,22 @@ export interface TutorialState {
   coached: boolean;
 }
 
+export interface Settings {
+  /** Show the action buttons as one column instead of the two-column grid. */
+  actionList: boolean;
+}
+
 export interface Account {
-  version: 1;
+  /** Save schema version. See SAVE_VERSION in meta.ts. */
+  version: number;
   xp: number;
   level: number;
   lives: number;
   unlocked: Record<SpeciesId, boolean>;
   hiddenFound: { mayfly: boolean };
+  /** Lives that ended in death before adulthood, any species. Three reveal the mayfly. */
+  youthDeaths: number;
+  settings: Settings;
   codex: Record<CodexId, number>;
   mastery: Record<SpeciesId, number>;
   gp: Record<SpeciesId, number>;
@@ -224,6 +238,24 @@ export interface Neighbour {
   food?: string;
   prey?: string;
   predators?: string[];
+}
+
+export interface MapNode {
+  id: string;
+  name: string;
+  biome: Biome;
+  x: number;
+  y: number;
+  here: boolean;
+  /** One step away, so it can be travelled to. */
+  adjacent: boolean;
+  /** False while the place is still fog: never visited and out of sight. */
+  known: boolean;
+  /** The place this species' goal points at (the Glen for deer). */
+  goal: boolean;
+  danger?: 'calm' | 'wary' | 'dangerous';
+  /** Deadly to stand in this season (winter on harsh ground). */
+  exposed: boolean;
 }
 
 export interface RunView {
@@ -251,6 +283,7 @@ export interface RunView {
   litters?: number;
   foodHere: string;
   goalLine: string;
+  map: { nodes: MapNode[]; paths: [string, string][] };
 }
 
 export interface PayoutBreakdown {

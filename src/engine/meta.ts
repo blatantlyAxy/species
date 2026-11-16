@@ -1,5 +1,5 @@
 import { LEVEL_XP, MASTERY_STEPS, PERKS, SPECIES, TIER2_USES, TRAITS, levelForXp } from './data';
-import { progressOf } from './run';
+import { progressOf, stageOf } from './run';
 import { coachingFor } from './tutorial';
 import type {
   Account, CodexId, DebriefReport, PayoutBreakdown, RunState, SpeciesId, TipId, TraitId, TutorialState,
@@ -9,11 +9,21 @@ void LEVEL_XP;
 
 export const CODEX_IDS: CodexId[] = ['mouse', 'deer', 'wolf', 'hawk', 'fox'];
 
+/**
+ * Save schema version. Bump it when the shape of Account changes and teach normalizeAccount the step.
+ * 1: up to v0.7.0. 2: v1.0.0 (youthDeaths, settings).
+ */
+export const SAVE_VERSION = 2;
+/** Deaths before adulthood needed to reveal the mayfly. */
+export const MAYFLY_YOUTH_DEATHS = 3;
+
 export function createAccount(): Account {
   return {
-    version: 1, xp: 0, level: 1, lives: 0,
+    version: SAVE_VERSION, xp: 0, level: 1, lives: 0,
     unlocked: { mouse: true, deer: true, wolf: false },
     hiddenFound: { mayfly: false },
+    youthDeaths: 0,
+    settings: { actionList: false },
     codex: { mouse: 0, deer: 0, wolf: 0, hawk: 0, fox: 0 },
     mastery: { mouse: 0, deer: 0, wolf: 0 },
     gp: { mouse: SPECIES.mouse.startGp, deer: SPECIES.deer.startGp, wolf: 0 },
@@ -32,26 +42,59 @@ export function createTutorial(): TutorialState {
   };
 }
 
+const num = (v: unknown, d: number, lo = 0, hi = Number.MAX_SAFE_INTEGER): number =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
+
+/** Merge a saved record of numbers over the defaults, dropping keys the game no longer has and bad values. */
+function nums<K extends string>(base: Record<K, number>, saved: any, hi?: number): Record<K, number> {
+  const out = { ...base };
+  if (saved && typeof saved === 'object') {
+    for (const k of Object.keys(base) as K[]) out[k] = num(saved[k], base[k], 0, hi);
+  }
+  return out;
+}
+function flags<K extends string>(base: Record<K, boolean>, saved: any): Record<K, boolean> {
+  const out = { ...base };
+  if (saved && typeof saved === 'object') {
+    for (const k of Object.keys(base) as K[]) if (typeof saved[k] === 'boolean') out[k] = saved[k];
+  }
+  return out;
+}
+
 /**
- * Bring a saved account up to date. Missing fields get defaults. A save from before the tutorial
- * existed that has already played a life skips the intro and the first-death coaching.
+ * Bring a saved account up to date, whatever build wrote it. Missing fields get defaults, unknown fields are
+ * dropped, and damaged values fall back to defaults instead of crashing the game later. A save from before the
+ * tutorial existed that has already played a life skips the intro and the first-death coaching.
  */
 export function normalizeAccount(raw: any): Account {
   const base = createAccount();
   if (!raw || typeof raw !== 'object') return base;
   const t = createTutorial();
   const saved = raw.tutorial && typeof raw.tutorial === 'object' ? raw.tutorial : null;
-  if (!saved && (raw.lives ?? 0) > 0) { t.introSeen = true; t.coached = true; }
+  const lives = Math.floor(num(raw.lives, 0));
+  if (!saved && lives > 0) { t.introSeen = true; t.coached = true; }
+  const xp = Math.floor(num(raw.xp, 0));
+  const unlocked = flags(base.unlocked, raw.unlocked);
+  unlocked.mouse = true;
+  unlocked.deer = true;
   return {
-    ...base, ...raw,
-    unlocked: { ...base.unlocked, ...raw.unlocked },
-    hiddenFound: { ...base.hiddenFound, ...raw.hiddenFound },
-    codex: { ...base.codex, ...raw.codex },
-    mastery: { ...base.mastery, ...raw.mastery },
-    gp: { ...base.gp, ...raw.gp },
-    wins: { ...base.wins, ...raw.wins },
-    traitUses: { ...base.traitUses, ...raw.traitUses },
-    tutorial: { ...t, ...saved, tipsSeen: { ...t.tipsSeen, ...saved?.tipsSeen } },
+    version: SAVE_VERSION,
+    xp, level: levelForXp(xp), lives,
+    unlocked,
+    hiddenFound: flags(base.hiddenFound, raw.hiddenFound),
+    youthDeaths: Math.floor(num(raw.youthDeaths, 0)),
+    settings: flags(base.settings, raw.settings),
+    codex: nums(base.codex, raw.codex, 100),
+    mastery: nums(base.mastery, raw.mastery),
+    gp: nums(base.gp, raw.gp),
+    wins: nums(base.wins, raw.wins),
+    traitUses: nums(base.traitUses, raw.traitUses),
+    tutorial: {
+      introSeen: typeof saved?.introSeen === 'boolean' ? saved.introSeen : t.introSeen,
+      tipsOff: typeof saved?.tipsOff === 'boolean' ? saved.tipsOff : t.tipsOff,
+      coached: typeof saved?.coached === 'boolean' ? saved.coached : t.coached,
+      tipsSeen: flags(t.tipsSeen, saved?.tipsSeen),
+    },
   };
 }
 
@@ -151,10 +194,13 @@ export function finishRun(account: Account, run: RunState): { account: Account; 
       condition: byCodex ? 'You filled the Wolf entry in your codex.' : 'You won a run as a deer.',
     });
   }
-  const day = SPECIES[species].turnsPerDay;
-  if (!acc.hiddenFound.mayfly && run.turnsTaken <= day) {
-    acc.hiddenFound.mayfly = true;
-    unlocks.push('Something stirred in the margins of your codex. A hidden species has been found. (Not playable in this prototype.)');
+  // the mayfly: cut short in youth, three times, as any species
+  if (end.type === 'death' && stageOf(run) === 'juvenile') {
+    acc.youthDeaths++;
+    if (!acc.hiddenFound.mayfly && acc.youthDeaths >= MAYFLY_YOUTH_DEATHS) {
+      acc.hiddenFound.mayfly = true;
+      unlocks.push('Something stirred in the margins of your codex. Three lives cut short have shown you a hidden species: the mayfly.');
+    }
   }
 
   // the first death gets one coaching card, once

@@ -1,9 +1,12 @@
 import { Feedback, VersionFooter } from './Support';
+import { Guide } from './Guide';
+import { Minimap } from './Minimap';
+import { eraseAll, loadAccount, loadRun, requestPersistence, saveAccount, saveRun } from './storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CODEX_NOTES, FIRST_SPECIES, INTRO_CARDS, PERKS, SPECIES, STAT_FLOOR, STATS, STAT_LABEL, TIER2_USES, TRAITS, TRAIT_IDS, MASTERY_STEPS,
-  act, birthRows, createAccount, finishRun, getView, masteryLevel, normalizeAccount, rollBirth, startRun, statUpkeep,
+  MAYFLY_YOUTH_DEATHS, act, birthRows, createAccount, decodeSave, encodeSave, finishRun, getView, masteryLevel, rollBirth, startRun, statUpkeep,
   tipText, traitSlots, triggeredTips, upkeepOf, xpForLevel,
 } from '../engine';
 import type {
@@ -12,42 +15,29 @@ import type {
 } from '../engine';
 
 type Screen =
-  | 'feedback' | 'menu' | 'intro' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account' | 'settings';
+  | 'feedback' | 'guide' | 'menu' | 'intro' | 'select' | 'prep' | 'birth' | 'play' | 'unlock' | 'debrief' | 'codex' | 'account' | 'settings';
 
-const GLOSSARY_URL = 'https://github.com/blatantlyAxy/species/blob/main/GLOSSARY.md';
-
-const ACCOUNT_KEY = 'species_account_v1';
-const RUN_KEY = 'species_run_v1';
 const PRED_EMOJI: Record<string, string> = { hawk: '🦅', fox: '🦊', wolf: '🐺', rival: '🐺' };
 
-function loadAccount(): Account {
-  try {
-    const raw = localStorage.getItem(ACCOUNT_KEY);
-    if (raw) return normalizeAccount(JSON.parse(raw));
-  } catch { /* ignore */ }
-  return createAccount();
-}
-
-function loadRun(): RunState | null {
-  try {
-    const raw = localStorage.getItem(RUN_KEY);
-    if (raw) return JSON.parse(raw) as RunState;
-  } catch { /* ignore */ }
-  return null;
-}
-
-function safeSet(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch { /* ignore */ }
-}
+const LOAD_NOTICE: Record<string, string> = {
+  backup: 'Your save could not be read, so the backup from the end of your last life was restored.',
+  reset: 'Your save could not be read and there was no backup, so the game has started fresh.',
+  run: 'The life you had in progress could not be continued in this version. Your account progress is safe.',
+};
 
 const newSeed = () => (Math.floor(Math.random() * 2 ** 31) + 1) >>> 0;
 
 export function App() {
-  const [account, setAccount] = useState<Account>(loadAccount);
-  const [run, setRun] = useState<RunState | null>(loadRun);
+  const [boot] = useState(() => ({ acc: loadAccount(), run: loadRun() }));
+  const [account, setAccount] = useState<Account>(boot.acc.account);
+  const [run, setRun] = useState<RunState | null>(boot.run.run);
+  const [notice, setNotice] = useState<string | null>(
+    LOAD_NOTICE[boot.acc.state] ?? (boot.run.dropped ? LOAD_NOTICE.run : null),
+  );
+  const [accSaved, setAccSaved] = useState(true);
+  const [runSaved, setRunSaved] = useState(true);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [introReplay, setIntroReplay] = useState(false);
   const [screen, setScreen] = useState<Screen>('menu');
   const [species, setSpecies] = useState<SpeciesId>('mouse');
   const [invest, setInvest] = useState<Partial<Record<Stat, number>>>({});
@@ -57,11 +47,14 @@ export function App() {
   const [report, setReport] = useState<DebriefReport | null>(null);
   const [customising, setCustomising] = useState(false);
 
-  useEffect(() => safeSet(ACCOUNT_KEY, JSON.stringify(account)), [account]);
-  useEffect(() => safeSet(RUN_KEY, run ? JSON.stringify(run) : null), [run]);
+  useEffect(() => setAccSaved(saveAccount(account)), [account]);
+  useEffect(() => setRunSaved(saveRun(run)), [run]);
+  useEffect(() => requestPersistence(), []);
 
   const [fbFrom, setFbFrom] = useState<Screen>('menu');
   const openFeedback = () => { if (screen !== 'feedback') setFbFrom(screen); setScreen('feedback'); };
+  const [guideFrom, setGuideFrom] = useState<Screen>('menu');
+  const openGuide = () => { if (screen !== 'guide') setGuideFrom(screen); setScreen('guide'); };
   const fbContext = [
     `Screen: ${fbFrom}`,
     `Account level ${account.level}, ${account.lives} lives`,
@@ -98,6 +91,7 @@ export function App() {
   };
 
   const beBorn = (sp: SpeciesId = species) => {
+    setStartError(null);
     setBirth(rollBirth(sp, newSeed()));
     setRerolled(false);
     setScreen('birth');
@@ -113,7 +107,7 @@ export function App() {
       setCustomising(false);
       setScreen('play');
     } catch (e) {
-      alert((e as Error).message);
+      setStartError((e as Error).message);
     }
   };
 
@@ -127,25 +121,52 @@ export function App() {
     setScreen(res.report.newSpecies?.length ? 'unlock' : 'debrief');
   };
 
-  const [eraseArmed, setEraseArmed] = useState(false);
   const resetAll = () => {
-    if (!eraseArmed) { setEraseArmed(true); return; }
+    eraseAll();
     setAccount(createAccount());
     setRun(null);
     setReport(null);
-    setEraseArmed(false);
+    setNotice(null);
     setScreen('menu');
+  };
+
+  /** Replace this device's progress with a save code. A life in progress belongs to the old account, so it ends. */
+  const importSave = (code: string): string | null => {
+    try {
+      const acc = decodeSave(code);
+      setAccount(acc);
+      setRun(null);
+      setReport(null);
+      setScreen('menu');
+      setNotice(`Save loaded: level ${acc.level}, ${acc.lives} lives lived.`);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    }
   };
 
   return (
     <div className="console">
+      {(!accSaved || !runSaved) && (
+        <div className="savewarn" role="alert">
+          Your progress is not being saved on this device (storage is full or blocked). Copy a save code from Settings to keep it.
+        </div>
+      )}
+      {notice && (
+        <div className="savewarn info" role="status">
+          <span>{notice}</span>
+          <button className="linkbtn" onClick={() => setNotice(null)}>OK</button>
+        </div>
+      )}
       {screen === 'menu' && (
         <Menu account={account} hasRun={!!run && !run.ended} hasEnded={!!run?.ended}
           onContinue={() => { if (run) setSpecies(run.species); setScreen('play'); }} onStart={goSelect}
           onCodex={() => setScreen('codex')} onAccount={() => setScreen('account')} onSettings={() => setScreen('settings')}
-          onReset={resetAll} eraseArmed={eraseArmed} />
+          onGuide={openGuide} />
       )}
-      {screen === 'intro' && <Intro onDone={finishIntro} />}
+      {screen === 'intro' && (introReplay
+        ? <Intro onDone={() => { setIntroReplay(false); setScreen('settings'); }} lastLabel="Done" />
+        : <Intro onDone={finishIntro} lastLabel="Begin my first life" />)}
       {screen === 'select' && <Select account={account} onPick={choose} onBack={() => setScreen('menu')} />}
       {screen === 'prep' && (
         <Prep account={account} species={species} invest={invest} setInvest={setInvest}
@@ -157,12 +178,12 @@ export function App() {
         <Birth account={account} birth={birth} species={species} rerolled={rerolled}
           onReroll={() => { setBirth(rollBirth(species, newSeed())); setRerolled(true); }}
           onCustomise={account.lives === 0 ? () => { setCustomising(true); setScreen('prep'); } : undefined}
-          onBegin={begin} onBack={() => setScreen(account.lives === 0 ? 'menu' : 'prep')} />
+          error={startError} onBegin={begin} onBack={() => setScreen(account.lives === 0 ? 'menu' : 'prep')} />
       )}
       {screen === 'play' && run && (
         <Play account={account} run={run} onRun={setRun} onFinish={finish} onMenu={() => setScreen('menu')}
           onTipSeen={(id) => setTutorial((t) => (t.tipsSeen[id] ? t : { ...t, tipsSeen: { ...t.tipsSeen, [id]: true } }))}
-          onHideTips={() => setTutorial((t) => ({ ...t, tipsOff: true }))} />
+          onHideTips={() => setTutorial((t) => ({ ...t, tipsOff: true }))} onGuide={openGuide} />
       )}
       {screen === 'unlock' && report?.newSpecies?.length ? (
         <UnlockFlash species={report.newSpecies} onContinue={() => setScreen('debrief')} />
@@ -174,9 +195,13 @@ export function App() {
       {screen === 'codex' && <Codex account={account} onBack={() => setScreen('menu')} />}
       {screen === 'account' && <AccountScreen account={account} onBack={() => setScreen('menu')} />}
       {screen === 'settings' && (
-        <SettingsScreen account={account} onBack={() => setScreen('menu')}
-          onTipsOff={(v) => setTutorial((t) => ({ ...t, tipsOff: v }))} />
+        <SettingsScreen account={account} hasRun={!!run} onBack={() => setScreen('menu')}
+          onTipsOff={(v) => setTutorial((t) => ({ ...t, tipsOff: v }))}
+          onActionList={(v) => setAccount((a) => ({ ...a, settings: { ...a.settings, actionList: v } }))}
+          onShowIntro={() => { setIntroReplay(true); setScreen('intro'); }}
+          onImport={importSave} onErase={resetAll} />
       )}
+      {screen === 'guide' && <Guide onClose={() => setScreen(guideFrom)} closeLabel={guideFrom === 'play' ? 'Back to my life' : 'Back'} />}
       {screen === 'feedback' && <Feedback context={fbContext} onClose={() => setScreen(fbFrom)} />}
       {screen !== 'feedback' && <VersionFooter onFeedback={openFeedback} />}
     </div>
@@ -193,7 +218,7 @@ function levelProgress(a: Account): number {
 
 function Menu(p: {
   account: Account; hasRun: boolean; hasEnded: boolean; onContinue: () => void; onStart: () => void;
-  onCodex: () => void; onAccount: () => void; onSettings: () => void; onReset: () => void; eraseArmed: boolean;
+  onCodex: () => void; onAccount: () => void; onSettings: () => void; onGuide: () => void;
 }) {
   return (
     <>
@@ -209,10 +234,10 @@ function Menu(p: {
           <button className="btn primary" onClick={p.onContinue}>{p.hasEnded ? 'See how your last life ended' : 'Continue your life'}</button>
         )}
         <button className="btn primary" onClick={p.onStart}>Begin</button>
+        <button className="btn" onClick={p.onGuide}>How to play</button>
         <button className="btn" onClick={p.onCodex}>Codex</button>
         <button className="btn" onClick={p.onAccount}>Account and perks</button>
         <button className="btn" onClick={p.onSettings}>Settings</button>
-        <button className="btn" onClick={p.onReset}>{p.eraseArmed ? 'Tap again to erase everything' : 'Erase save'}</button>
       </div>
     </>
   );
@@ -220,7 +245,7 @@ function Menu(p: {
 
 // ---------------- intro ----------------
 
-function Intro(p: { onDone: () => void }) {
+function Intro(p: { onDone: () => void; lastLabel: string }) {
   const [i, setI] = useState(0);
   const card = INTRO_CARDS[i];
   const last = i === INTRO_CARDS.length - 1;
@@ -233,23 +258,77 @@ function Intro(p: { onDone: () => void }) {
         {INTRO_CARDS.map((_, k) => <span key={k} className={k === i ? 'on' : ''} />)}
       </div>
       <button className="btn primary center" autoFocus onClick={() => (last ? p.onDone() : setI(i + 1))}>
-        {last ? 'Begin my first life' : 'Next'}
+        {last ? p.lastLabel : 'Next'}
       </button>
       <button className="btn center" onClick={p.onDone}>Skip</button>
     </div>
   );
 }
 
-function SettingsScreen(p: { account: Account; onTipsOff: (v: boolean) => void; onBack: () => void }) {
-  const off = p.account.tutorial.tipsOff;
+function Switch(p: { label: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="screen pad stack">
+    <button className={`btn switch ${p.on ? 'on' : ''}`} role="switch" aria-checked={p.on} onClick={() => p.onChange(!p.on)}>
+      <span>{p.label}</span>
+      <span className="switchstate">{p.on ? 'On' : 'Off'}</span>
+    </button>
+  );
+}
+
+function SettingsScreen(p: {
+  account: Account; hasRun: boolean; onTipsOff: (v: boolean) => void; onActionList: (v: boolean) => void;
+  onShowIntro: () => void; onImport: (code: string) => string | null; onErase: () => void; onBack: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [loadArmed, setLoadArmed] = useState(false);
+  const [eraseArmed, setEraseArmed] = useState(false);
+  const exportRef = useRef<HTMLTextAreaElement>(null);
+  const saveCode = useMemo(() => encodeSave(p.account), [p.account]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(saveCode);
+      setStatus({ ok: true, text: 'Save code copied. Keep it somewhere safe, or paste it into Settings on another device.' });
+    } catch {
+      exportRef.current?.select();
+      setStatus({ ok: false, text: 'Could not copy automatically. The code is selected below: copy it by hand.' });
+    }
+  };
+  const load = () => {
+    if (!loadArmed) { setLoadArmed(true); return; }
+    const err = p.onImport(code);
+    setLoadArmed(false);
+    if (err) setStatus({ ok: false, text: err });
+  };
+  return (
+    <div className="screen pad stack" data-screen="settings">
       <h2>Settings</h2>
-      <button className={`btn switch ${off ? 'on' : ''}`} role="switch" aria-checked={off} onClick={() => p.onTipsOff(!off)}>
-        <span>Don't show tips</span>
-        <span className="switchstate">{off ? 'On' : 'Off'}</span>
-      </button>
+      <h3>Play</h3>
+      <Switch label="Don't show tips" on={p.account.tutorial.tipsOff} onChange={p.onTipsOff} />
       <p className="small dim">Tips are the one-line hints that appear the first time something comes up. Turning this on hides them all.</p>
+      <Switch label="Actions as a single list" on={p.account.settings.actionList} onChange={p.onActionList} />
+      <p className="small dim">Off shows the action buttons two across, which keeps more of the screen in view.</p>
+      <button className="btn" onClick={p.onShowIntro}>Show the intro again</button>
+      <h3>Your save</h3>
+      <p className="small dim">Progress is kept on this device only. A save code moves it to another device or keeps a backup. It holds your account, not a life in progress.</p>
+      <button className="btn" onClick={copy}>Copy save code</button>
+      <textarea ref={exportRef} className="fbtext codebox" rows={2} readOnly value={saveCode} aria-label="Your save code" onFocus={(e) => e.currentTarget.select()} />
+      {!importing ? (
+        <button className="btn" onClick={() => setImporting(true)}>Load a save code</button>
+      ) : (
+        <>
+          <textarea className="fbtext codebox" rows={3} value={code} placeholder="Paste a save code here" aria-label="Save code to load"
+            onChange={(e) => { setCode(e.target.value); setLoadArmed(false); setStatus(null); }} />
+          <p className="small warnline">Loading a code replaces the progress on this device{p.hasRun ? ' and ends the life in progress' : ''}.</p>
+          <button className="btn" disabled={!code.trim()} onClick={load}>{loadArmed ? 'Tap again to replace my progress' : 'Load this code'}</button>
+        </>
+      )}
+      {status && <div className="small" role="status" style={{ color: status.ok ? 'var(--good)' : 'var(--bad)' }}>{status.text}</div>}
+      <h3>Start over</h3>
+      <button className="btn danger" onClick={() => (eraseArmed ? p.onErase() : setEraseArmed(true))}>
+        {eraseArmed ? 'Tap again to erase everything' : 'Erase save'}
+      </button>
+      {eraseArmed && <p className="small warnline">This removes your account, codex, unlocks and any life in progress from this device. It cannot be undone.</p>}
       <button className="btn center" onClick={p.onBack}>Back</button>
     </div>
   );
@@ -288,7 +367,7 @@ function Select(p: { account: Account; onPick: (id: SpeciesId) => void; onBack: 
       {p.account.hiddenFound.mayfly && (
         <div className="card locked">
           <b>🪰 Mayfly</b> <span className="badge">Hidden species found</span>
-          <div className="small dim">Spawn within one day. Not playable in this prototype.</div>
+          <div className="small dim">You found it by dying young {MAYFLY_YOUTH_DEATHS} times. Its one-day life arrives in a later update.</div>
         </div>
       )}
       <button className="btn center" onClick={p.onBack}>Back</button>
@@ -506,7 +585,7 @@ const BIRTH_ROW_HELP: Record<string, string> = {
 
 function Birth(p: {
   account: Account; birth: BirthRoll; species: SpeciesId; rerolled: boolean; onReroll: () => void;
-  onCustomise?: () => void; onBegin: () => void; onBack: () => void;
+  onCustomise?: () => void; onBegin: () => void; onBack: () => void; error?: string | null;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const canReroll = p.account.level >= 3 && !p.rerolled;
@@ -527,6 +606,7 @@ function Birth(p: {
           </div>
         </div>
       ))}
+      {p.error && <p className="small warnline" role="alert">{p.error} Go back and adjust your build.</p>}
       <button className="btn primary center" onClick={p.onBegin}>Into the wild {SPECIES[p.species].emoji}</button>
       {canReroll && <button className="btn center" onClick={p.onReroll}>Reroll this birth (once)</button>}
       {p.onCustomise && <button className="linkbtn" onClick={p.onCustomise}>Customise your {SPECIES[p.species].name.toLowerCase()}</button>}
@@ -754,13 +834,29 @@ function MetersPanel(p: { view: RunView }) {
   );
 }
 
-function SurroundingsPanel(p: { view: RunView }) {
+const SIGHT_HELP = [
+  'Tier 0: I only know the place I stand in.',
+  'Tier 1: I can tell how dangerous the places next to me are.',
+  'Tier 2: I can also judge the food next door, and the map shows places two paths away.',
+  'Tier 3: I can name the predators next door, and the whole map is clear.',
+];
+
+function SurroundingsPanel(p: { view: RunView; emoji: string; canTravel: boolean; onTravel: (id: string) => void }) {
   const { view } = p;
+  const [sightOpen, setSightOpen] = useState(false);
   return (
     <div className="look" data-panel="surroundings">
-      <span className="dim">{view.foodHere}. <span title="How much you can see about nearby places">Sight: tier {view.tier} of 3.</span></span>
+      <span className="dim">{view.foodHere}.</span>{' '}
+      <button type="button" className="linkbtn sightbtn" aria-expanded={sightOpen} onClick={() => setSightOpen(!sightOpen)}>Sight: tier {view.tier} of 3</button>
+      {sightOpen && (
+        <div className="small dim sighthelp">
+          {SIGHT_HELP[view.tier]} Sight grows with account level, mastery of this species, high Senses, Keen Nose and a fuller codex.
+        </div>
+      )}
+      <Minimap map={view.map} emoji={p.emoji} canTravel={p.canTravel} onTravel={p.onTravel} />
+      {p.canTravel && <div className="small dim maphint">Tap a neighbouring place to travel there.</div>}
       <div className="nb">
-        {view.neighbours.map((n) => (
+        {view.tier > 0 && view.neighbours.map((n) => (
           <span key={n.id}>
             {n.name}
             {n.danger && <> <span className={n.danger}>[{n.danger}]</span></>}
@@ -797,12 +893,12 @@ function Flashcard(p: { run: RunState; hold: boolean; leaving: boolean; onDismis
 }
 
 /** A one-line first-time tip, near the Actions panel and never in the way of it. */
-function TipStrip(p: { text: string; onGotIt: () => void; onHide: () => void }) {
+function TipStrip(p: { text: string; onGotIt: () => void; onHide: () => void; onGuide: () => void }) {
   return (
     <div className="tipstrip" role="note" data-panel="tip">
       <span className="tiptext">{p.text}</span>
       <span className="tipacts">
-        <a className="linkbtn" href={GLOSSARY_URL} target="_blank" rel="noopener noreferrer" title="What do these words mean? Opens the glossary" aria-label="Open the glossary">?</a>
+        <button className="linkbtn" title="What do these words mean? Opens How to play" aria-label="How to play" onClick={p.onGuide}>?</button>
         <button className="linkbtn" onClick={p.onGotIt}>Got it</button>
         <button className="linkbtn" onClick={p.onHide}>Hide tips</button>
       </span>
@@ -812,7 +908,7 @@ function TipStrip(p: { text: string; onGotIt: () => void; onHide: () => void }) 
 
 function Play(p: {
   account: Account; run: RunState; onRun: (r: RunState) => void; onFinish: () => void; onMenu: () => void;
-  onTipSeen: (id: TipId) => void; onHideTips: () => void;
+  onTipSeen: (id: TipId) => void; onHideTips: () => void; onGuide: () => void;
 }) {
   const { run } = p;
   const view = useMemo(() => getView(run), [run]);
@@ -913,12 +1009,14 @@ function Play(p: {
 
       <div className="screen">
         <MetersPanel view={shownView} />
-        <SurroundingsPanel view={shownView} />
+        <SurroundingsPanel view={shownView} emoji={SPECIES[run.species].emoji}
+          canTravel={!cardPending && !run.ended && view.actions.some((a) => a.id === 'travel' && !a.disabled)}
+          onTravel={(id) => doAct('travel', id)} />
         {activeTip && (
-          <TipStrip text={tipText(activeTip, tipCtx)} onGotIt={() => onTipSeen(activeTip)} onHide={p.onHideTips} />
+          <TipStrip text={tipText(activeTip, tipCtx)} onGotIt={() => onTipSeen(activeTip)} onHide={p.onHideTips} onGuide={p.onGuide} />
         )}
-        <div className={`actions ${cardPending ? 'hascard' : ''}`} data-panel="actions" ref={actionsRef}
-          style={cardPending && cardH ? { height: cardH } : undefined}>
+        <div className={`actions ${cardPending ? 'hascard' : ''} ${!cardPending && !run.ended && !p.account.settings.actionList ? 'grid2' : ''}`} data-panel="actions" ref={actionsRef}
+          style={cardPending && cardH ? { minHeight: cardH } : undefined}>
           {cardPending ? (
             <Flashcard run={run} hold={hold} leaving={leaving} onDismiss={() => dismiss()} />
           ) : run.ended ? (
@@ -928,7 +1026,7 @@ function Play(p: {
             </>
           ) : picking ? (
             <>
-              <div className="small dim">Where to? (Esc to cancel)</div>
+              <div className="small dim wide">Where to? (Esc to cancel)</div>
               {picking.targets!.map((t, i) => (
                 <button key={t.id} className="btn" onClick={() => doAct(picking.id, t.id)}>
                   <span className="key">{i + 1}</span>{t.label}
@@ -938,7 +1036,7 @@ function Play(p: {
                   })()}
                 </button>
               ))}
-              <button className="btn center" onClick={() => setPicking(null)}>Cancel</button>
+              <button className="btn center wide" onClick={() => setPicking(null)}>Cancel</button>
             </>
           ) : (
             view.actions.map((a, i) => (
@@ -952,7 +1050,10 @@ function Play(p: {
           )}
         </div>
       </div>
-      <button className="btn center" onClick={p.onMenu}>Menu (your life is saved)</button>
+      <div className="row playfoot">
+        <button className="btn center" onClick={p.onMenu}>Menu (your life is saved)</button>
+        <button className="btn center" onClick={p.onGuide}>How to play</button>
+      </div>
     </>
   );
 }

@@ -319,3 +319,48 @@ a.btn.disabledlink { opacity: 0.45; pointer-events: none; filter: grayscale(1); 
 .gainadd { position: absolute; top: 0; bottom: 0; background: var(--good); transform-origin: left center;
   animation: growin 1s ease-out 0.25s backwards; box-shadow: 0 0 8px rgba(111,220,122,0.6); }
 @keyframes growin { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
+
+/* v1.0: save notices, guide, minimap, two-column actions, settings */
+.savewarn { border: 3px solid var(--bad); background: #3a1418; color: var(--ink); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.45; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.savewarn.info { border-color: var(--accent); background: #2c2a14; }
+.btn.danger { border-color: #7a3038; color: #ff9c9c; }
+.codebox { font-size: 11px; word-break: break-all; resize: none; }
+.guidehead { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.guidesec { display: grid; gap: 6px; }
+.guidelist { margin: 0; display: grid; gap: 8px; padding: 2px 4px 6px; }
+.guidelist dt { color: var(--accent); font-size: 13px; font-weight: bold; }
+.guidelist dd { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.minimap { display: block; width: 100%; max-height: 240px; margin: 6px 0 2px; background: #0f111a; border: 2px solid #0c0e15; border-radius: 6px; }
+.mpath { stroke: #3d4260; stroke-width: 0.9; stroke-linecap: round; }
+.mpath.lit { stroke: var(--accent); stroke-opacity: 0.7; }
+.mpath.faint { stroke-dasharray: 1.4 1.6; stroke-opacity: 0.6; }
+.mnode text { text-anchor: middle; pointer-events: none; font-family: var(--mono); }
+.mlabel { font-size: 3.1px; fill: #9aa0b8; }
+.mlabel.on { fill: var(--accent); font-weight: bold; }
+.mq { font-size: 4px; fill: #9aa0b8; }
+.memoji { font-size: 4.6px; }
+.mmark { font-size: 4.2px; }
+.mmark.gold { fill: var(--accent); }
+.mmark.cold { fill: #bfe6ff; }
+.mnode.go { cursor: pointer; }
+.mnode.go:hover circle:last-of-type, .mnode.go:focus-visible circle:last-of-type { stroke: var(--accent); stroke-width: 1.1; }
+.mnode.go:focus-visible { outline: none; }
+.mnode.go .mlabel { fill: var(--ink); text-decoration: underline; }
+.herering { animation: ringpulse 1.6s ease-in-out infinite; }
+@keyframes ringpulse { 0%, 100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.45; } }
+.maphint { margin: 0 0 4px; }
+.sightbtn { padding: 2px 0; }
+.sighthelp { margin: 2px 0 4px; line-height: 1.45; }
+.actions.grid2 { grid-template-columns: 1fr 1fr; align-items: stretch; }
+.actions.grid2 > .wide { grid-column: 1 / -1; }
+.actions.grid2 > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.actions.grid2 .btn { padding: 9px 10px; font-size: 13px; }
+.actions.grid2 .btn .key { margin-right: 6px; }
+.actions.grid2 .btn .hint { margin-left: 0; margin-top: 5px; }
+.playfoot { flex-wrap: nowrap; }
+.playfoot .btn { flex: 1 1 0; }
+/* the flashcard fills the Actions panel's height, and the panel grows when a long card needs more room */
+.actions.hascard { display: flex; flex-direction: column; }
+.actions.hascard .flashcard { flex: 1 0 auto; height: auto; overflow: visible; }
+@media (prefers-reduced-motion: reduce) { .herering, .sprite, .gainadd, .screen.flash { animation: none; } }
+@media (max-width: 380px) { .actions.grid2 .btn { font-size: 12px; padding: 8px; } .actions.grid2 .btn .hint { font-size: 10px; } }

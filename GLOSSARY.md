@@ -98,7 +98,7 @@ New players learn in three intro cards, then through one-line tips the first tim
 
 **First life** — On a new account the first life is always the lowest species in the roster (the field mouse for now). The species and prep screens are skipped and the **Balanced** preset is applied (baseline stats, no mutation). The birth screen offers a **Customise your field mouse** link to the prep screen; coming back from it keeps the same birth, so customising is not a free reroll. From the second life on, Begin opens the species screen and prep as usual.
 
-**Tip** — A one-line hint in a dashed strip above the Actions panel, shown the first time its trigger happens. Only one shows at a time, and it never covers the buttons. A tip is marked seen when you act or tap **Got it**. Links on a tip: **?** opens the glossary on GitHub, **Got it**, and **Hide tips**.
+**Tip** — A one-line hint in a dashed strip above the Actions panel, shown the first time its trigger happens. Only one shows at a time, and it never covers the buttons. A tip is marked seen when you act or tap **Got it**. Links on a tip: **?** opens How to play, **Got it**, and **Hide tips**.
 
 | Tip | Trigger |
 |---|---|
@@ -281,7 +281,7 @@ A single life can add at most 40 to any one meter, so one lucky run cannot unloc
 
 **Unlock** — Opening a new species. Wolf unlocks when its familiarity reaches 100, or when you win a run as a deer.
 
-**Hidden species** — A species with no menu entry that simply appears when earned. Currently only the **mayfly**, found by starting and ending any run within one in-game day (one turn for deer and wolf, two for mouse). Detected and announced, but not playable yet.
+**Hidden species** — A species with no menu entry that simply appears when earned. Currently only the **mayfly**, found by dying before adulthood in three separate lives, as any species. Revealed and announced, but not playable yet.
 
 ---
 
@@ -343,6 +343,30 @@ Each species has a one-sentence win condition.
 
 ---
 
+## Map, saves and the app (added in 1.0.0)
+
+**Map graph** — The world as places (nodes) and paths (edges). Paths are listed once in `PATHS` in `data.ts` and every path runs both ways; each place's neighbours are derived from that list. A broken map fails at startup.
+
+**Minimap** — The map drawn in the Surroundings panel. Your place has a yellow ring. Neighbouring places can be tapped to travel. A coloured ring is the danger next door (from sight tier 1), a snowflake marks harsh ground in winter, a star marks the deer's goal (the Sheltered Glen).
+
+**Fog** — A place shown as a grey dot with a question mark. A place is known if you stand in it, it is next door, you have visited it this life, it is your goal, or your sight reaches it (tier 2: two paths away; tier 3: everywhere).
+
+**How to play** — The in-game guide: a short version of this glossary. Opened from the menu, the Play screen, and the ? on a tip.
+
+**Save** — Your account, kept on the device. It carries a schema version and is repaired when loaded. Storage key names never change between builds.
+
+**Backup** — A second copy of the account, refreshed at the end of each life. Used if the main save cannot be read.
+
+**Save code** — Your account as one line of text starting with `SPECIES1.`, copied from Settings. Loading one replaces the progress on that device. It does not include a life in progress.
+
+**Youth deaths** — A count on the account of lives that ended in death before adulthood, as any species. Three reveal the mayfly.
+
+**Action grid** — The action buttons shown two across (the default). Settings has "Actions as a single list" to go back to one column.
+
+**Install / offline** — The game can be added to a phone's home screen and runs without a connection after the first visit.
+
+---
+
 ## Planned terms
 
 None of these are in the engine yet.
@@ -359,7 +383,7 @@ None of these are in the engine yet.
 
 **Wider trait pool** — Fifteen more traits in the design doc (Sprinter, Iron Jaw, Second Wind, Trickster and others).
 
-**More species** — Salmon, fox, hawk and mayfly. Fox unlocks by winning as a mouse.
+**More species** — Salmon, fox, hawk and a playable mayfly (in 1.0.0 the mayfly can be found but not played). Fox unlocks by winning as a mouse.
 
 ---
 

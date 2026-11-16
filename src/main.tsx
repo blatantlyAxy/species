@@ -11,3 +11,8 @@ createRoot(document.getElementById('root')!).render(
     </CrashBoundary>
   </StrictMode>,
 );
+
+// Offline support and install. Only in the built site; the dev server stays uncached.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => undefined); });
+}

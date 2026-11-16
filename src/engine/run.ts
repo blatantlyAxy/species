@@ -1,12 +1,12 @@
 import {
-  CODEX_NOTES, EVENTS, LOCATIONS, PREDATORS, SEASON_NAMES, SPECIES, TIER2_USES, TRAITS, MASTERY_STEPS,
+  CODEX_NOTES, EVENTS, LOCATIONS, PATHS, PREDATORS, SEASON_NAMES, SPECIES, TIER2_USES, TRAITS, MASTERY_STEPS,
 } from './data';
 import { clamp, nextRand, seededRand, weightedPick } from './rng';
 import {
   countPred, initWorld, pathStep, seasonOf, threatsAt, worldStep,
 } from './world';
 import type {
-  Account, Action, ActiveEvent, BirthRoll, CodexId, EventDef, Neighbour, PredatorDef, RunState,
+  Account, Action, ActiveEvent, BirthRoll, CodexId, EventDef, MapNode, Neighbour, PredatorDef, RunState,
   RunView, SpeciesId, Snap, Stage, Stat, TraitId, TurnReport,
 } from './types';
 import { STATS, STAT_LABEL } from './types';
@@ -247,7 +247,7 @@ export function startRun(
     world: undefined as never, birth, mutation: null,
     herd: 8, rank: species === 'deer' ? (birth.litter === 'strong' ? 3 : 4) : birth.litter === 'strong' ? 4 : 5, standing: 0, cooldown: 0,
     nest: null, litters: 0, mateCall: false, trackBonus: false, cohesion: false,
-    famGain: {}, famNotes: [], last: [], history: [], ended: null, visibilityTier: 0,
+    famGain: {}, famNotes: [], last: [], history: [], ended: null, visited: [birth.loc], visibilityTier: 0,
     showOdds: acc.level >= 2, report: null,
   };
   for (const t of run.traits) run.traitTiers[t] = (acc.traitUses[t] ?? 0) >= TIER2_USES ? 2 : 1;
@@ -823,6 +823,7 @@ function perform(run: RunState, id: string, target?: string) {
       }
       energyCost(run, 6 + moveExtra(run));
       run.loc = dest;
+      if (!(run.visited ??= []).includes(dest)) run.visited.push(dest);
       say(run, `You move on to ${LOCATIONS[dest].name}.`);
       break;
     }
@@ -1004,7 +1005,53 @@ export function getView(run: RunState): RunView {
       ? `Deer here: ${preyLabel(run.world.deer[run.loc])}`
       : `Food here: ${foodLabel(run.world.food[run.loc], loc.food * 2)}`,
     goalLine,
+    map: mapOf(run),
   };
+}
+
+/** The minimap: every place, with fog for what this animal has not visited and cannot see. */
+function mapOf(run: RunState): RunView['map'] {
+  const here = LOCATIONS[run.loc];
+  const tier = run.visibilityTier;
+  const visited = new Set(run.visited ?? [run.loc]);
+  const winter = seasonOf(run) === 3;
+  const nodes: MapNode[] = Object.values(LOCATIONS).map((l) => {
+    const isHere = l.id === run.loc;
+    const adjacent = here.adj.includes(l.id);
+    const goal = run.species === 'deer' && l.id === GLEN;
+    const inSight = tier >= 3 || (tier >= 2 && pathStep(run.loc, l.id).dist <= 2);
+    const known = isHere || adjacent || goal || visited.has(l.id) || inSight;
+    const n: MapNode = {
+      id: l.id, name: l.name, biome: l.biome, x: l.x, y: l.y, here: isHere, adjacent, known, goal,
+      exposed: known && winter && !!l.harsh,
+    };
+    if (adjacent && tier >= 1) {
+      const t = threatsAt(run.world, l.id, run.species).length;
+      n.danger = t === 0 ? 'calm' : t === 1 ? 'wary' : 'dangerous';
+    }
+    return n;
+  });
+  return { nodes, paths: PATHS };
+}
+
+/**
+ * Check a run loaded from storage. Returns null when it cannot be played (damaged, or from a build whose
+ * places or species no longer exist), so the caller can drop it instead of crashing.
+ */
+export function normalizeRun(raw: any): RunState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!SPECIES[raw.species as SpeciesId] || !LOCATIONS[raw.loc]) return null;
+  if (!raw.world || typeof raw.world !== 'object' || !raw.world.food || !Array.isArray(raw.world.preds)) return null;
+  if (!raw.stats || STATS.some((s) => typeof raw.stats[s] !== 'number')) return null;
+  if (!raw.birth || typeof raw.rng !== 'number' || typeof raw.age !== 'number') return null;
+  if (!Array.isArray(raw.traits) || !Array.isArray(raw.history)) return null;
+  if (Object.keys(LOCATIONS).some((id) => typeof raw.world.food[id] !== 'number')) return null;
+  if (raw.world.preds.some((p: any) => !p || !PREDATORS[p.id as keyof typeof PREDATORS] || !LOCATIONS[p.loc])) return null;
+  const run = raw as RunState;
+  if (!Array.isArray(run.visited)) run.visited = [run.loc];
+  run.visited = run.visited.filter((id) => !!LOCATIONS[id]);
+  if (!run.visited.includes(run.loc)) run.visited.push(run.loc);
+  return run;
 }
 
 export { TRAITS };

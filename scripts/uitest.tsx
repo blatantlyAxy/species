@@ -227,7 +227,7 @@ console.log('flash screens seen:', flashes);
   await click(live()[0]);
   if (!q('.flashcard')) throw new Error('flashcard missing after an action');
   if (q('[data-panel="actions"] > button')) throw new Error('buttons should be hidden under the card');
-  if (q('[data-panel="actions"]')!.style.height !== '300px') throw new Error('card must keep the Actions panel height');
+  if (q('[data-panel="actions"]')!.style.minHeight !== '300px') throw new Error('card must keep at least the Actions panel height');
   if (turnNo() !== 1) throw new Error('Environment panel should hold the old turn while the card is up');
   await key('Enter');
   if (q('.flashcard')) throw new Error('Enter should dismiss the card');
@@ -337,9 +337,10 @@ console.log('flash screens seen:', flashes);
   // first turn tip, then Got it
   if (!q1('[data-panel="tip"]') || !has('Hunger, Energy and Safety change as time passes')) throw new Error('first-turn tip missing');
   if (q1('[data-panel="actions"] .flashcard')) throw new Error('a tip must never cover the buttons');
-  if (!q1('[data-panel="tip"] a[href*="GLOSSARY"]')) throw new Error('tip needs a ? link to the glossary');
+  if (!q1('[data-panel="tip"] button[aria-label="How to play"]')) throw new Error('tip needs a ? button that opens How to play');
   await clickText('Got it');
-  if (q1('[data-panel="tip"]')) throw new Error('Got it should clear the tip');
+  // another tip may follow at once (a predator or a low meter on the very first turn), so check this one is gone
+  if (has('Hunger, Energy and Safety change as time passes')) throw new Error('Got it should clear the tip');
   if (savedAccount().tutorial?.tipsSeen?.first_turn !== true) throw new Error('seen flag not saved');
 
   // the first card is held until you tap it, and explains itself
@@ -438,6 +439,109 @@ console.log('flash screens seen:', flashes);
   if (document.querySelector('.flash') || !document.body.textContent!.includes('Time survived')) throw new Error('debrief should follow the unlock flash');
   if (!document.body.textContent!.includes('Wolf unlocked')) throw new Error('debrief unlock badge missing');
   console.log('unlock flash ok');
+}
+// v1.0: How to play, Settings (layout switch, save codes, erase), minimap travel, damaged saves
+{
+  const { createAccount, encodeSave } = await import('../src/engine');
+  const typeInto = async (el: HTMLTextAreaElement, value: string) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')!.set!.call(el, value);
+      el.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+  };
+  const played = { ...createAccount(), lives: 3, xp: 140, tutorial: { introSeen: true, tipsOff: true, coached: true } };
+
+  // How to play opens from the menu and comes back
+  await remount({ species_account_v1: JSON.stringify(played) });
+  await clickText('How to play');
+  if (!q1('[data-screen="guide"]') || !has('Dying is progress')) throw new Error('How to play screen missing');
+  await clickText('Meters');
+  if (!has('A full Hunger bar means you are starving')) throw new Error('guide sections should open');
+  await clickText('Back');
+  if (!has('Live one life')) throw new Error('How to play should return to the menu');
+  if (buttons().some((b) => b.textContent === 'Erase save')) throw new Error('Erase save belongs in Settings, not the menu');
+
+  // minimap: every place drawn, fog on far places, tap a neighbour to travel
+  await clickText('Begin');
+  await clickText('Field Mouse');
+  await clickText('Be born');
+  await clickText('Into the wild');
+  const nodes = () => Array.from(document.querySelectorAll('[data-panel="minimap"] [data-node]')) as HTMLElement[];
+  if (nodes().length !== 8) throw new Error('minimap should draw all eight places, got ' + nodes().length);
+  if (!nodes().some((n) => n.getAttribute('data-known') === 'false')) throw new Error('a fresh mouse should see fog on the minimap');
+  if (document.querySelectorAll('[data-panel="minimap"] .mnode.here').length !== 1) throw new Error('minimap needs one "you are here" marker');
+  if (!q1('[data-panel="actions"]')!.classList.contains('grid2')) throw new Error('actions should default to the two-column grid');
+  {
+    let moved = false;
+    for (let i = 0; i < 60 && !moved; i++) {
+      const card = q1('.flashcard');
+      if (card) { await click(card); continue; }
+      if (has('Your legacy')) break;
+      const go = document.querySelector('[data-panel="minimap"] .mnode.go') as HTMLElement | null;
+      if (go) {
+        const place = () => q1('[data-panel="environment"] .place')!.textContent;
+        const dest = go.getAttribute('aria-label')!.replace('Travel to ', '');
+        await click(go);
+        if (q1('.flashcard')) await click(q1('.flashcard')!);
+        if (place() !== dest) throw new Error(`tapping ${dest} on the minimap should travel there, at ${place()}`);
+        moved = true;
+      } else {
+        await click(liveActions()[0]);
+      }
+    }
+    if (!moved) throw new Error('never got to travel by minimap (threats every turn?)');
+  }
+  await clickText('How to play');
+  await clickText('Back to my life');
+  if (!q1('[data-panel="actions"]')) throw new Error('How to play should return to the life in progress');
+  await clickText('Menu');
+
+  // Settings: layout switch, save code out and in, erase
+  await clickText('Settings');
+  await clickText('Actions as a single list');
+  if (savedAccount().settings?.actionList !== true) throw new Error('layout switch not saved');
+  await clickText('Show the intro again');
+  if (!has('One life')) throw new Error('intro replay missing');
+  await clickText('Skip');
+  if (!q1('[data-screen="settings"]')) throw new Error('intro replay should return to Settings');
+  const out = q1('textarea[aria-label="Your save code"]') as HTMLTextAreaElement;
+  if (!out.value.startsWith('SPECIES1.')) throw new Error('save code missing');
+  await clickText('Load a save code');
+  const box = q1('textarea[aria-label="Save code to load"]') as HTMLTextAreaElement;
+  await typeInto(box, out.value.slice(0, -3));
+  await clickText('Load this code');
+  await clickText('Tap again to replace');
+  if (!has('incomplete or was changed')) throw new Error('a cut-short code must be refused with a reason');
+  if (savedAccount().lives !== 3) throw new Error('a refused code must not change the save');
+  const other = { ...createAccount(), lives: 9, xp: 500 };
+  await typeInto(box, encodeSave(other as any));
+  await clickText('Load this code');
+  await clickText('Tap again to replace');
+  if (!has('Save loaded: level 5, 9 lives lived.')) throw new Error('loading a code should confirm what was loaded: ' + document.body.textContent!.slice(0, 200));
+  if (savedAccount().lives !== 9 || localStorage.getItem('species_run_v1')) throw new Error('loaded save not stored, or the old life was kept');
+  await clickText('Settings');
+  await clickText('Erase save');
+  if (savedAccount().lives !== 9) throw new Error('erase must need a second tap');
+  await clickText('Tap again to erase everything');
+  if (savedAccount().lives !== 0 || !has('Live one life')) throw new Error('erase should reset and return to the menu');
+
+  // damaged saves: the backup is used, and an unplayable life is dropped with a notice
+  await remount({ species_account_v1: '{broken', species_account_backup_v1: JSON.stringify(played) });
+  if (!has('backup from the end of your last life was restored') || !has('3 lives lived')) throw new Error('backup should be restored when the save is damaged');
+  await remount({ species_account_v1: 'null{' });
+  if (!has('started fresh') || !has('0 lives lived')) throw new Error('an unreadable save with no backup starts fresh with a notice');
+  await remount({ species_account_v1: JSON.stringify(played), species_run_v1: JSON.stringify({ species: 'salmon', loc: 'nowhere' }) });
+  if (!has('could not be continued') || has('Continue your life')) throw new Error('an unplayable life must be dropped with a notice');
+  if (localStorage.getItem('species_run_v1')) throw new Error('the unplayable life should be removed from storage');
+  // a v0.7.0 save loads and keeps its progress
+  await remount({ species_account_v1: JSON.stringify({ version: 1, xp: 260, level: 4, lives: 7, unlocked: { mouse: true, deer: true, wolf: true },
+    hiddenFound: { mayfly: false }, codex: { mouse: 20, deer: 0, wolf: 100, hawk: 12, fox: 4 }, mastery: { mouse: 90, deer: 40, wolf: 0 },
+    gp: { mouse: 6, deer: 5, wolf: 3 }, wins: { mouse: 1, deer: 1, wolf: 0 }, traitUses: { zigzag: 11, keen_nose: 2, thick_coat: 0 },
+    tutorial: { introSeen: true, tipsOff: false, coached: true, tipsSeen: { first_turn: true } } }) });
+  const up = savedAccount();
+  if (up.version !== 2 || up.lives !== 7 || up.codex.wolf !== 100 || up.gp.mouse !== 6 || up.youthDeaths !== 0 || up.settings.actionList !== false
+    || !up.unlocked.wolf || up.traitUses.zigzag !== 11 || up.tutorial.tipsSeen.first_turn !== true) throw new Error('v0.7.0 save did not migrate cleanly: ' + JSON.stringify(up));
+  console.log('v1.0 screens and saves ok');
 }
 console.log('UI smoke test passed');
 process.exit(0);

@@ -4,48 +4,60 @@ export const SEASON_NAMES = ['Spring', 'Summer', 'Autumn', 'Winter'];
 export const SEASON_LEN = 8;
 export const YEAR_LEN = SEASON_LEN * 4;
 
-export const LOCATIONS: Record<string, Location> = {
-  open_meadow: {
-    id: 'open_meadow', name: 'Open Meadow', biome: 'meadow', food: 5, cover: 1,
-    adj: ['clover_field', 'birch_edge', 'shallow_ford'],
-    blurb: 'Wide grass under an open sky. Plenty to eat, nowhere to hide.',
-  },
-  clover_field: {
-    id: 'clover_field', name: 'Clover Field', biome: 'meadow', food: 7, cover: 2,
-    adj: ['open_meadow', 'birch_edge', 'reed_bank'],
-    blurb: 'Thick clover and seed heads as far as you can see.',
-  },
-  birch_edge: {
-    id: 'birch_edge', name: 'Birch Edge', biome: 'forest', food: 4, cover: 3,
-    adj: ['open_meadow', 'clover_field', 'deep_pines'],
-    blurb: 'Pale trunks and dappled light where the meadow meets the wood.',
-  },
-  deep_pines: {
-    id: 'deep_pines', name: 'Deep Pines', biome: 'forest', food: 2, cover: 4,
-    adj: ['birch_edge', 'windy_ridge', 'sheltered_glen'],
-    blurb: 'Dark, quiet, and soft underfoot. Little grows here.',
-  },
-  shallow_ford: {
-    id: 'shallow_ford', name: 'Shallow Ford', biome: 'river', food: 3, cover: 1,
-    adj: ['open_meadow', 'reed_bank'],
-    blurb: 'Cold water over smooth stones. Everything comes here to drink.',
-  },
-  reed_bank: {
-    id: 'reed_bank', name: 'Reed Bank', biome: 'river', food: 3, cover: 3,
-    adj: ['shallow_ford', 'clover_field'],
-    blurb: 'Tall reeds hiss in the wind along the river.',
-  },
-  windy_ridge: {
-    id: 'windy_ridge', name: 'Windy Ridge', biome: 'highlands', food: 1, cover: 2,
-    adj: ['deep_pines', 'sheltered_glen'],
-    blurb: 'Bare rock and thin grass. The wind never stops.', harsh: true,
-  },
-  sheltered_glen: {
-    id: 'sheltered_glen', name: 'Sheltered Glen', biome: 'highlands', food: 3, cover: 4,
-    adj: ['windy_ridge', 'deep_pines'],
-    blurb: 'A hollow in the hills, shielded from the worst of winter.', sheltered: true,
-  },
-};
+/** Places (nodes). Paths are listed once in PATHS below; each place's neighbours are derived from them. */
+const PLACES: Omit<Location, 'adj'>[] = [
+  { id: 'open_meadow', name: 'Open Meadow', biome: 'meadow', food: 5, cover: 1, x: 34, y: 50,
+    blurb: 'Wide grass under an open sky. Plenty to eat, nowhere to hide.' },
+  { id: 'clover_field', name: 'Clover Field', biome: 'meadow', food: 7, cover: 2, x: 56, y: 74,
+    blurb: 'Thick clover and seed heads as far as you can see.' },
+  { id: 'birch_edge', name: 'Birch Edge', biome: 'forest', food: 4, cover: 3, x: 58, y: 42,
+    blurb: 'Pale trunks and dappled light where the meadow meets the wood.' },
+  { id: 'deep_pines', name: 'Deep Pines', biome: 'forest', food: 2, cover: 4, x: 74, y: 34,
+    blurb: 'Dark, quiet, and soft underfoot. Little grows here.' },
+  { id: 'shallow_ford', name: 'Shallow Ford', biome: 'river', food: 3, cover: 1, x: 12, y: 60,
+    blurb: 'Cold water over smooth stones. Everything comes here to drink.' },
+  { id: 'reed_bank', name: 'Reed Bank', biome: 'river', food: 3, cover: 3, x: 30, y: 88,
+    blurb: 'Tall reeds hiss in the wind along the river.' },
+  { id: 'windy_ridge', name: 'Windy Ridge', biome: 'highlands', food: 1, cover: 2, x: 56, y: 10,
+    blurb: 'Bare rock and thin grass. The wind never stops.', harsh: true },
+  { id: 'sheltered_glen', name: 'Sheltered Glen', biome: 'highlands', food: 3, cover: 4, x: 90, y: 12,
+    blurb: 'A hollow in the hills, shielded from the worst of winter.', sheltered: true },
+];
+
+/**
+ * Paths (edges). Every path runs both ways. The order matters: neighbours are listed in the order their
+ * paths appear here, and the engine draws random numbers while walking that list, so reordering changes saved runs.
+ */
+export const PATHS: [string, string][] = [
+  ['open_meadow', 'clover_field'], ['open_meadow', 'birch_edge'], ['open_meadow', 'shallow_ford'],
+  ['clover_field', 'birch_edge'], ['shallow_ford', 'reed_bank'], ['clover_field', 'reed_bank'],
+  ['birch_edge', 'deep_pines'], ['deep_pines', 'windy_ridge'], ['windy_ridge', 'sheltered_glen'],
+  ['deep_pines', 'sheltered_glen'],
+];
+
+/** Build the location table from places and paths, and refuse a broken map. */
+export function buildMap(places: Omit<Location, 'adj'>[], paths: [string, string][]): Record<string, Location> {
+  const out: Record<string, Location> = {};
+  for (const p of places) {
+    if (out[p.id]) throw new Error(`Map: duplicate place ${p.id}`);
+    out[p.id] = { ...p, adj: [] };
+  }
+  for (const [a, b] of paths) {
+    if (!out[a] || !out[b]) throw new Error(`Map: path ${a} to ${b} names an unknown place`);
+    if (a === b || out[a].adj.includes(b)) throw new Error(`Map: bad or repeated path ${a} to ${b}`);
+    out[a].adj.push(b);
+    out[b].adj.push(a);
+  }
+  const ids = Object.keys(out);
+  const seen = new Set<string>(ids.slice(0, 1));
+  const queue = ids.slice(0, 1);
+  while (queue.length) for (const n of out[queue.shift()!].adj) if (!seen.has(n)) { seen.add(n); queue.push(n); }
+  const lost = ids.filter((i) => !seen.has(i));
+  if (lost.length) throw new Error(`Map: cannot reach ${lost.join(', ')}`);
+  return out;
+}
+
+export const LOCATIONS: Record<string, Location> = buildMap(PLACES, PATHS);
 
 export const LOC_IDS = Object.keys(LOCATIONS);
 
@@ -81,7 +93,7 @@ export const SPECIES: Record<SpeciesId, SpeciesDef> = {
     maxAge: 40, adultAt: 7, elderAt: 32,
     drain: { satiety: 7, energy: 4 }, turnsPerDay: 1,
     spawn: { birch_edge: 3, deep_pines: 3, open_meadow: 1, windy_ridge: 1 },
-    startGp: 3, unlockText: 'Fill the wolf familiarity meter in your codex, or win a run as a deer.',
+    startGp: 3, unlockText: 'Fill the Wolf entry in your codex, or win a life as a deer.',
   },
 };
 

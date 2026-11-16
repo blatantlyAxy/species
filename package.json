@@ -1,13 +1,20 @@
 {
   "name": "species-game",
   "private": true,
-  "version": "0.7.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "sim": "tsx scripts/sim.ts",
-    "typecheck": "tsc --noEmit"
+    "test:sim": "tsx scripts/sim.ts 300 | diff - scripts/sim.snapshot.txt",
+    "test:core": "tsx scripts/core.ts",
+    "test:tutorial": "tsx scripts/tutorial.ts",
+    "test:ui": "tsx scripts/uitest.tsx",
+    "test": "npm run typecheck && npm run test:sim && npm run test:core && npm run test:tutorial && npm run test:ui",
+    "release-check": "npm test && npm run build"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -24,5 +31,6 @@
     "typescript": "^5.5.4",
     "vite": "^6.4.4",
     "vite-plugin-singlefile": "^2.0.2"
-  }
+  },
+  "description": "Species: a turn-based evolution game. Live one animal's life at a time."
 }

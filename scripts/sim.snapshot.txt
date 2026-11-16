@@ -1,0 +1,18 @@
+
+MOUSE  (300 lives)
+  win 21%  death 6%  old age 73%
+  first-life win rate (fresh account): 22%
+  avg turns 30.2  avg xp 144
+  killers: {"fox":2,"You starved.":11,"You froze on the ridge.":2,"hawk":3}
+
+DEER  (300 lives)
+  win 21%  death 3%  old age 76%
+  first-life win rate (fresh account): 16%
+  avg turns 36.3  avg xp 110
+  killers: {"You starved.":3,"wolf":5,"You succumbed to sickness.":1}
+
+WOLF  (300 lives)
+  win 41%  death 6%  old age 53%
+  first-life win rate (fresh account): 33%
+  avg turns 34.7  avg xp 248
+  killers: {"You starved.":15,"You succumbed to sickness.":2,"A deer's kick killed you.":2}
