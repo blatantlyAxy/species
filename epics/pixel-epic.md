@@ -1,5 +1,24 @@
 # Epic PIXEL: Pixel scene layer
 
+## Status (17 Nov 2026, v1.1.0)
+
+Art direction decided by Akshay: no reference game; the game's idea comes from TierZoo, so the scene leans on game-HUD cues (name tags over animals, "builds") rather than on any one game's look. Sprites are 16 px with one shared palette. Placeholder art first, real art later.
+
+| Story | State |
+|---|---|
+| P-1 Art direction and asset spec | Partly: 16 px, shared palette (13 colours, cap 16), grid format, in `src/ui/pixel/art.ts`. No separate `art-spec.md`. |
+| P-2 Render spike | **Built in 1.1.0** (`PixelScene`, 160 by 64 canvas, integer-pixel art scaled with hard edges) |
+| P-3 Asset pipeline | Not built. Art is text grids in code, so there are no image files and no size budget yet. A PNG loader is only needed once real art arrives. |
+| P-5 Biome backdrops | **Built in 1.1.0**, drawn by code: four biomes, four seasons each, scenery seeded per place |
+| P-6 Sprites (idle) | **Built in 1.1.0** as placeholders: mouse, deer, wolf, hawk, fox, nest; herd and pack drawn small; rival is a darker wolf |
+| P-12 Weather and season | Partly: season palettes, falling snow in winter, river ripples. No rain, wind or night. |
+| P-13 Goal-state visuals | Partly: up to four herd-mates, nest. No rank position or pups. |
+| P-16 Classic view | **Built in 1.1.0** (Settings switch, automatic fallback without canvas) |
+| P-18 Tests | Partly: sprite grids and scene drawing are checked headless in `scripts/core.ts`; the UI test fakes a 2d context |
+| P-4, P-7, P-8 to P-11, P-14, P-15, P-17, P-19 | Not started |
+
+Next in order: P-8 (scene cues from the engine) and P-9 (cue player), which make the scene play out each turn; then P-4 (pixel UI theme). Real art can replace any grid at any time.
+
 Written 21 Oct 2026 against build v0.5.0 (repo `main`, commit 5aa35f4). Estimates are rough working sessions (S = half, M = one, L = two) for one builder chat plus review. Art is not included in the code estimates.
 
 ## Goal

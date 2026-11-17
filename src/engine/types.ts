@@ -202,6 +202,8 @@ export interface TutorialState {
 export interface Settings {
   /** Show the action buttons as one column instead of the two-column grid. */
   actionList: boolean;
+  /** Show the original emoji scene instead of the pixel scene. */
+  classicScene: boolean;
 }
 
 export interface Account {

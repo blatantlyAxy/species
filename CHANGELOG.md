@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (17 Nov 2026)
+
+No game rules changed (the sim snapshot is unchanged).
+
+- **Pixel scene.** The top of the Play screen is now a drawn scene: your animal, your herd or pack, a nest, and whatever is hunting you, on a backdrop for the place's biome and the season (snow falls in winter, the river ripples). Name tags sit over you and the threat. All art is placeholder, written as 16 by 16 character grids in `src/ui/pixel/art.ts` with one shared 13-colour palette.
+- **Classic view** switch in Settings brings back the emoji scene. Browsers without canvas get it automatically.
+- **Credit.** "Built on the foundation laid by TierZoo" on the menu, with a Credits section in How to play. Both say the game is independent and not affiliated.
+- Save schema version 3 (adds the Classic view setting). Older saves load as before.
+
 ## 1.0.0 (16 Nov 2026)
 
 The first release meant for players, not only testers. No game rules changed: the balance sim's output is identical to 0.7.0.

@@ -11,9 +11,9 @@ export const CODEX_IDS: CodexId[] = ['mouse', 'deer', 'wolf', 'hawk', 'fox'];
 
 /**
  * Save schema version. Bump it when the shape of Account changes and teach normalizeAccount the step.
- * 1: up to v0.7.0. 2: v1.0.0 (youthDeaths, settings).
+ * 1: up to v0.7.0. 2: v1.0.0 (youthDeaths, settings). 3: v1.1.0 (settings.classicScene).
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 /** Deaths before adulthood needed to reveal the mayfly. */
 export const MAYFLY_YOUTH_DEATHS = 3;
 
@@ -23,7 +23,7 @@ export function createAccount(): Account {
     unlocked: { mouse: true, deer: true, wolf: false },
     hiddenFound: { mayfly: false },
     youthDeaths: 0,
-    settings: { actionList: false },
+    settings: { actionList: false, classicScene: false },
     codex: { mouse: 0, deer: 0, wolf: 0, hawk: 0, fox: 0 },
     mastery: { mouse: 0, deer: 0, wolf: 0 },
     gp: { mouse: SPECIES.mouse.startGp, deer: SPECIES.deer.startGp, wolf: 0 },

@@ -129,4 +129,32 @@ const throws = (f: () => unknown, m: string) => { try { f(); } catch { return; }
   quick.age = 10; quick.turnsTaken = 1; quick.ended = { type: 'old_age', cause: '' };
   if (finishRun(createAccount(), quick).account.hiddenFound.mayfly) fail('the old one-day rule is gone');
 }
-console.log('core checks ok: map graph, minimap view, save codes, account and run normalising, mayfly counter');
+// --- pixel scene art ---
+{
+  const { PAL, SPRITES, SCENE_W, SCENE_H, drawScene } = await import('../src/ui/pixel/art');
+  for (const [id, rows] of Object.entries(SPRITES)) {
+    if (rows.length !== 16) fail(`sprite ${id} needs 16 rows, has ${rows.length}`);
+    rows.forEach((r, i) => {
+      if (r.length !== 16) fail(`sprite ${id} row ${i} needs 16 columns, has ${r.length}`);
+      for (const ch of r) if (ch !== '.' && !PAL[ch]) fail(`sprite ${id} row ${i} uses "${ch}", which is not in the palette`);
+    });
+    if (!rows.some((r) => /[^.]/.test(r))) fail(`sprite ${id} is empty`);
+  }
+  if (Object.keys(PAL).length > 16) fail('the shared palette is capped at 16 colours');
+  const base = { biome: 'meadow', season: 1, place: 'open_meadow', player: 'mouse', frame: 0 } as const;
+  const key = (f: { px: Uint32Array }) => f.px.join(',');
+  const a = drawScene(base);
+  eq([a.w, a.h, a.px.length], [SCENE_W, SCENE_H, SCENE_W * SCENE_H], 'scene size');
+  if (a.px.some((v) => v === 0)) fail('every scene pixel must be painted');
+  eq(key(drawScene(base)), key(a), 'the same place and frame always draws the same picture');
+  for (const [label, change] of [
+    ['biome', { biome: 'forest' }], ['season', { season: 3 }], ['place', { place: 'clover_field' }], ['foe', { foe: 'hawk' }],
+    ['player', { player: 'deer' }], ['companions', { companions: 3 }], ['nest', { nest: true }], ['frame', { frame: 1 }],
+  ] as [string, object][]) {
+    if (key(drawScene({ ...base, ...change } as any)) === key(a)) fail(`changing the ${label} should change the picture`);
+  }
+  for (const biome of ['meadow', 'forest', 'river', 'highlands']) for (let season = 0; season < 4; season++) {
+    if (drawScene({ ...base, biome, season } as any).px.some((v) => v === 0)) fail(`unpainted pixels in ${biome}, season ${season}`);
+  }
+}
+console.log('core checks ok: map graph, minimap view, save codes, account and run normalising, mayfly counter, pixel art');

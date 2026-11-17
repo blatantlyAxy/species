@@ -363,6 +363,14 @@ Each species has a one-sentence win condition.
 
 **Action grid** — The action buttons shown two across (the default). Settings has "Actions as a single list" to go back to one column.
 
+**Pixel scene** (added in 1.1.0) — The drawn picture in the Environment panel: a 160 by 64 pixel canvas scaled up with hard edges. It shows your animal, up to four of your herd or pack, the mouse's nest, and the current threat, over a backdrop chosen by biome and season. It idles on a slow two-step bob, which stops when the tab is hidden or reduced motion is on.
+
+**Name tag** — The small label over an animal in the pixel scene: "You · Deer" over yours, the threat's name in red over the hunter.
+
+**Classic view** — A Settings switch that shows the original emoji scene instead of the pixel scene. Used automatically where the browser cannot draw a canvas.
+
+**Sprite grid** — How placeholder art is stored: 16 rows of 16 characters, each character a colour from the shared palette, `.` for transparent. All sprites face right; threats are mirrored when drawn.
+
 **Install / offline** — The game can be added to a phone's home screen and runs without a connection after the first visit.
 
 ---

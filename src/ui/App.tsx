@@ -1,6 +1,8 @@
 import { Feedback, VersionFooter } from './Support';
 import { Guide } from './Guide';
 import { Minimap } from './Minimap';
+import { PixelScene, canDrawPixels } from './pixel/PixelScene';
+import type { SpriteId } from './pixel/art';
 import { eraseAll, loadAccount, loadRun, requestPersistence, saveAccount, saveRun } from './storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -198,6 +200,7 @@ export function App() {
         <SettingsScreen account={account} hasRun={!!run} onBack={() => setScreen('menu')}
           onTipsOff={(v) => setTutorial((t) => ({ ...t, tipsOff: v }))}
           onActionList={(v) => setAccount((a) => ({ ...a, settings: { ...a.settings, actionList: v } }))}
+          onClassicScene={(v) => setAccount((a) => ({ ...a, settings: { ...a.settings, classicScene: v } }))}
           onShowIntro={() => { setIntroReplay(true); setScreen('intro'); }}
           onImport={importSave} onErase={resetAll} />
       )}
@@ -238,6 +241,11 @@ function Menu(p: {
         <button className="btn" onClick={p.onCodex}>Codex</button>
         <button className="btn" onClick={p.onAccount}>Account and perks</button>
         <button className="btn" onClick={p.onSettings}>Settings</button>
+        <p className="small dim credit" data-credit="tierzoo">
+          Built on the foundation laid by{' '}
+          <a href="https://www.tierzoo.com" target="_blank" rel="noopener noreferrer">TierZoo</a>.
+          <br />An independent fan-made game, not affiliated with TierZoo.
+        </p>
       </div>
     </>
   );
@@ -275,7 +283,7 @@ function Switch(p: { label: string; on: boolean; onChange: (v: boolean) => void 
 }
 
 function SettingsScreen(p: {
-  account: Account; hasRun: boolean; onTipsOff: (v: boolean) => void; onActionList: (v: boolean) => void;
+  account: Account; hasRun: boolean; onTipsOff: (v: boolean) => void; onActionList: (v: boolean) => void; onClassicScene: (v: boolean) => void;
   onShowIntro: () => void; onImport: (code: string) => string | null; onErase: () => void; onBack: () => void;
 }) {
   const [code, setCode] = useState('');
@@ -306,6 +314,8 @@ function SettingsScreen(p: {
       <h3>Play</h3>
       <Switch label="Don't show tips" on={p.account.tutorial.tipsOff} onChange={p.onTipsOff} />
       <p className="small dim">Tips are the one-line hints that appear the first time something comes up. Turning this on hides them all.</p>
+      <Switch label="Classic view (no pixel scene)" on={p.account.settings.classicScene} onChange={p.onClassicScene} />
+      <p className="small dim">On swaps the pixel scene for the original emoji scene. Use it if the scene looks wrong or feels slow on this device.</p>
       <Switch label="Actions as a single list" on={p.account.settings.actionList} onChange={p.onActionList} />
       <p className="small dim">Off shows the action buttons two across, which keeps more of the screen in view.</p>
       <button className="btn" onClick={p.onShowIntro}>Show the intro again</button>
@@ -760,25 +770,42 @@ function earlierTurns(history: string[], max = 3): { label: string; lines: strin
   return chunks.slice(0, -1).reverse().slice(0, max);
 }
 
-function EnvironmentPanel(p: { run: RunState; view: RunView }) {
+const SEASON_INDEX: Record<string, number> = { Spring: 0, Summer: 1, Autumn: 2, Winter: 3 };
+const FOE_SPRITE: Record<string, SpriteId> = { hawk: 'hawk', fox: 'fox', wolf: 'wolf', rival: 'wolf' };
+const FOE_TAG: Record<string, string> = { hawk: 'Hawk', fox: 'Fox', wolf: 'Wolf pack', rival: 'Rival' };
+
+function EnvironmentPanel(p: { run: RunState; view: RunView; classic: boolean }) {
   const { run, view } = p;
+  const pixel = !p.classic && canDrawPixels();
+  const foe = view.event?.kind === 'threat' ? view.event.pred : undefined;
   const def = SPECIES[run.species];
   const ev = view.event;
   const rep = run.report;
   return (
-    <div className={`scene ${view.biome}`} data-panel="environment">
+    <div className={`scene ${view.biome} ${pixel ? 'haspixel' : ''}`} data-panel="environment">
       <div className="topline">
         <span>{view.seasonName} &middot; Turn {view.turn}/{view.maxTurns}</span>
         <span>{view.stage}</span>
       </div>
       <div className="place">{view.locName}</div>
       <div className="small" style={{ opacity: 0.85 }}>{view.blurb}</div>
-      <div className="sprites">
+      {pixel ? (
+        <PixelScene
+          spec={{
+            biome: view.biome, season: SEASON_INDEX[view.seasonName] ?? 0, place: run.loc, player: run.species,
+            foe: foe ? FOE_SPRITE[foe] : undefined,
+            companions: run.species === 'deer' ? view.herd! - 1 : run.species === 'wolf' ? 3 : 0,
+            nest: run.species === 'mouse' && !!view.nest,
+          }}
+          playerTag={`You · ${def.name}`} foeTag={foe ? FOE_TAG[foe] : undefined} />
+      ) : (
+      <div className="sprites" data-scene="classic">
         <span className="sprite">{def.emoji}</span>
         {ev?.kind === 'threat' && ev.pred && <span className="sprite foe">{PRED_EMOJI[ev.pred]}</span>}
         {run.species === 'deer' && <span className="sprite small">{'🦌'.repeat(Math.min(3, Math.max(0, view.herd! - 1)))}</span>}
         {run.species === 'mouse' && view.nest && <span className="sprite small">🪺</span>}
       </div>
+      )}
       {ev && (
         <div className={`eventbox ${ev.kind}`}>
           {rep?.newEvent === ev.name && <span className="newtag">NEW THIS TURN</span>}
@@ -1003,7 +1030,7 @@ function Play(p: {
   return (
     <>
       <div className="screen">
-        <EnvironmentPanel run={shown} view={shownView} />
+        <EnvironmentPanel run={shown} view={shownView} classic={p.account.settings.classicScene} />
         <TurnLogPanel run={shown} />
       </div>
 

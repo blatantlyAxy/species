@@ -11,6 +11,11 @@ sight tiers, a minimap, a tutorial and an in-game guide. Progress is saved on th
 New to the game's terms? The game has a How to play screen. The full reference is [GLOSSARY.md](GLOSSARY.md), and
 [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
+## Credits
+
+Built on the foundation laid by [TierZoo](https://www.tierzoo.com), the YouTube series by Patrick "Patch" Lacey that explains
+evolution as if animals were players choosing builds. Species is an independent fan-made game, not affiliated with or endorsed by TierZoo.
+
 ## Run it
 
 ```bash
@@ -32,10 +37,12 @@ Pushing to `main` deploys to Cloudflare Workers (`wrangler.jsonc` serves `dist/`
   - `run.ts` the turn loop: upkeep, event draw, actions, threat rolls, goals, the view and the minimap
   - `meta.ts` account, save schema and migration, death payout, codex, unlocks
   - `save.ts` save codes; `tutorial.ts` tips and first-death coaching
-- `src/ui/` React UI. `App.tsx` screens, `Minimap.tsx`, `Guide.tsx` (How to play), `storage.ts` (local saves and backup), `Support.tsx` (feedback, crash screen)
+- `src/ui/` React UI. `App.tsx` screens, `pixel/art.ts` (sprites, palette and scene drawing as pure functions) and `pixel/PixelScene.tsx` (the canvas), `Minimap.tsx`, `Guide.tsx` (How to play), `storage.ts` (local saves and backup), `Support.tsx` (feedback, crash screen)
 - `public/` manifest, icons and `sw.js` (network first, cache as the offline fallback)
 - `scripts/` `sim.ts` balance bot and `sim.snapshot.txt` (its expected output), `core.ts` engine checks, `tutorial.ts`, `uitest.tsx`, `trace.ts` (prints one life)
-- `epics/` planned work (the pixel scene layer)
+- `epics/` planned work (the pixel scene layer; see its status section for what is built)
+
+To change a sprite, edit its grid in `src/ui/pixel/art.ts`: 16 rows of 16 characters from the palette at the top of that file. `npm run test:core` checks every grid.
 
 ## Rules that keep it safe to change
 

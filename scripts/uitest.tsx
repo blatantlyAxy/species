@@ -15,6 +15,8 @@ Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', {
   configurable: true,
   get() { return (this as HTMLElement).classList?.contains('actions') ? 300 : 0; },
 });
+// jsdom has no canvas. Most of the run uses the Classic scene; one block below installs a fake 2d context.
+dom.window.HTMLCanvasElement.prototype.getContext = (() => null) as any;
 g.confirm = () => true; g.alert = (m: string) => { throw new Error('alert: ' + m); };
 
 const React = await import('react');
@@ -539,9 +541,51 @@ console.log('flash screens seen:', flashes);
     gp: { mouse: 6, deer: 5, wolf: 3 }, wins: { mouse: 1, deer: 1, wolf: 0 }, traitUses: { zigzag: 11, keen_nose: 2, thick_coat: 0 },
     tutorial: { introSeen: true, tipsOff: false, coached: true, tipsSeen: { first_turn: true } } }) });
   const up = savedAccount();
-  if (up.version !== 2 || up.lives !== 7 || up.codex.wolf !== 100 || up.gp.mouse !== 6 || up.youthDeaths !== 0 || up.settings.actionList !== false
+  if (up.version !== 3 || up.lives !== 7 || up.codex.wolf !== 100 || up.gp.mouse !== 6 || up.youthDeaths !== 0 || up.settings.actionList !== false
     || !up.unlocked.wolf || up.traitUses.zigzag !== 11 || up.tutorial.tipsSeen.first_turn !== true) throw new Error('v0.7.0 save did not migrate cleanly: ' + JSON.stringify(up));
   console.log('v1.0 screens and saves ok');
+}
+// v1.1: pixel scene, Classic view switch, TierZoo credit
+{
+  const { createAccount } = await import('../src/engine');
+  const { resetCanvasCheck } = await import('../src/ui/pixel/PixelScene');
+  const played = { ...createAccount(), lives: 3, xp: 140, tutorial: { introSeen: true, tipsOff: true, coached: true } };
+  let blits = 0;
+  dom.window.HTMLCanvasElement.prototype.getContext = (() => ({
+    createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
+    putImageData: (img: any) => { if (img.data.some((v: number) => v !== 0)) blits++; },
+  })) as any;
+  resetCanvasCheck();
+  await remount({ species_account_v1: JSON.stringify(played) });
+  const credit = q1('[data-credit="tierzoo"]');
+  if (!credit || !credit.textContent!.includes('Built on the foundation laid by TierZoo') || !credit.querySelector('a[href="https://www.tierzoo.com"]'))
+    throw new Error('the menu needs the TierZoo credit with its link');
+  if (!credit.textContent!.includes('not affiliated')) throw new Error('the credit must say the game is independent');
+  await clickText('How to play');
+  await clickText('Credits');
+  if (!has('Patrick "Patch" Lacey')) throw new Error('How to play needs a Credits section');
+  await clickText('Back');
+  await clickText('Begin');
+  await clickText('Deer');
+  await clickText('Be born');
+  await clickText('Into the wild');
+  if (!q1('[data-scene="pixel"] canvas') || q1('[data-scene="classic"]')) throw new Error('the pixel scene should be the default');
+  if (blits < 1) throw new Error('the pixel scene never drew anything');
+  if (!q1('.ptag.you')!.textContent!.includes('Deer')) throw new Error('the player name tag is missing');
+  await clickText('Menu');
+  await clickText('Settings');
+  await clickText('Classic view');
+  if (savedAccount().settings.classicScene !== true) throw new Error('Classic view switch not saved');
+  await clickText('Back');
+  await clickText('Continue your life');
+  if (q1('[data-scene="pixel"]') || !q1('[data-scene="classic"] .sprite')) throw new Error('Classic view should bring the emoji scene back');
+  // a browser without canvas falls back to Classic by itself
+  dom.window.HTMLCanvasElement.prototype.getContext = (() => null) as any;
+  resetCanvasCheck();
+  await remount({ species_account_v1: JSON.stringify(played) });
+  await clickText('Begin'); await clickText('Field Mouse'); await clickText('Be born'); await clickText('Into the wild');
+  if (!q1('[data-scene="classic"]')) throw new Error('no canvas should mean the Classic scene');
+  console.log('v1.1 pixel scene and credit ok');
 }
 console.log('UI smoke test passed');
 process.exit(0);

@@ -364,3 +364,17 @@ a.btn.disabledlink { opacity: 0.45; pointer-events: none; filter: grayscale(1); 
 .actions.hascard .flashcard { flex: 1 0 auto; height: auto; overflow: visible; }
 @media (prefers-reduced-motion: reduce) { .herering, .sprite, .gainadd, .screen.flash { animation: none; } }
 @media (max-width: 380px) { .actions.grid2 .btn { font-size: 12px; padding: 8px; } .actions.grid2 .btn .hint { font-size: 10px; } }
+
+/* v1.1: pixel scene */
+.scene.haspixel { background: #0f111a; color: var(--ink); padding: 10px 0 0; }
+.scene.haspixel > .topline, .scene.haspixel > .place, .scene.haspixel > .small { padding: 0 12px; text-shadow: none; }
+.scene.haspixel > .small { margin-bottom: 8px; }
+.scene.haspixel > .eventbox { margin: 8px 12px 12px; }
+.pixelwrap { position: relative; line-height: 0; border-top: 3px solid #0c0e15; border-bottom: 3px solid #0c0e15; }
+.pixelscene { display: block; width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; }
+.ptag { position: absolute; top: 6px; transform: translateX(-50%); line-height: 1.2; white-space: nowrap;
+  font-size: 10px; font-weight: bold; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 6px; border: 2px solid #0c0e15; border-radius: 4px; background: rgba(20, 22, 31, 0.88); color: var(--accent); }
+.ptag.foe { color: #ff9c9c; border-color: var(--bad); }
+.credit { text-align: center; line-height: 1.5; margin: 6px 0 0; }
+.credit a { color: var(--accent); }

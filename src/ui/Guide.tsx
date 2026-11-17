@@ -38,6 +38,7 @@ const SECTIONS: { id: string; title: string; items: [string, string][] }[] = [
     ['Places and paths', 'The world is eight places joined by paths. Travel moves you one path at a time.'],
     ['Minimap', 'Your place is ringed in yellow. Tap a neighbouring place to travel there. Grey dots marked ? are places you have not visited and cannot see yet.'],
     ['Sight tier', 'From 0 to 3. Higher tiers show danger, food and predators further away. It grows with account level, species mastery, high Senses, Keen Nose and a well-filled codex.'],
+    ['Pixel scene', 'The picture at the top of the Play screen: your animal, your herd or pack, and whatever is hunting you, in the place and season you are in. Settings has a Classic view if you prefer the original.'],
     ['Markers', 'A coloured ring shows danger next door (green calm, amber wary, red dangerous). A snowflake marks ground that is deadly this winter. A star marks where your goal lies.'],
   ] },
   { id: 'meta', title: 'What carries over', items: [
@@ -52,6 +53,11 @@ const SECTIONS: { id: string; title: string; items: [string, string][] }[] = [
     ['Where your progress lives', 'On this device, in this browser. Nothing is sent anywhere. Clearing site data erases it.'],
     ['Save code', 'Settings can copy your progress as a save code. Paste it on another device, or keep it somewhere safe as a backup.'],
     ['Offline', 'Once loaded, the game works without a connection. Add it to your home screen to play it like an app.'],
+  ] },
+  { id: 'credits', title: 'Credits', items: [
+    ['TierZoo', 'Species is built on the foundation laid by TierZoo, the YouTube series by Patrick "Patch" Lacey that explains evolution as if animals were players choosing builds in a game. The idea for this game comes from there. Find it at tierzoo.com.'],
+    ['Independent', 'Species is a fan-made game. It is not affiliated with or endorsed by TierZoo.'],
+    ['Made by', 'Akshay Rathore.'],
   ] },
 ];
 
