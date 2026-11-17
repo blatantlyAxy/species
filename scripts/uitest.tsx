@@ -44,6 +44,11 @@ const remount = async (storage: Record<string, string>) => {
   cur = createRoot(d);
   await act(async () => { cur.render(React.createElement(App)); });
 };
+const clickLabel = async (l: string) => {
+  const el = document.querySelector(`button[aria-label="${l}"]`) as HTMLElement | null;
+  if (!el) throw new Error('no button labelled: ' + l);
+  await click(el);
+};
 const has = (t: string) => document.body.textContent!.includes(t);
 const q1 = (sel: string) => document.querySelector(sel) as HTMLElement | null;
 const savedAccount = () => JSON.parse(localStorage.getItem('species_account_v1') ?? '{}');
@@ -211,7 +216,7 @@ console.log('flash screens seen:', flashes);
 // flashcard: the result of each action sits in the Actions panel, then fades up into the Turn log
 {
   const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
-  const turnText = () => q('[data-panel="environment"] .topline')!.textContent!;
+  const turnText = () => q('[data-panel="environment"] .when')!.textContent!;
   const turnNo = () => Number(/Turn (\d+)\//.exec(turnText())![1]);
   const live = () => (Array.from(document.querySelectorAll('[data-panel="actions"] button')) as HTMLButtonElement[])
     .filter((b) => !b.disabled && !b.textContent!.startsWith('Cancel'));
@@ -493,10 +498,18 @@ console.log('flash screens seen:', flashes);
     }
     if (!moved) throw new Error('never got to travel by minimap (threats every turn?)');
   }
-  await clickText('How to play');
+  await clickLabel('Guide');
   await clickText('Back to my life');
+  // one screen: the Log and the Map share a tab area, the page footer and the old bottom buttons are gone
+  if (!q1('.console.playing .playshell')) throw new Error('the Play screen should be the one-screen shell');
+  if (has('Send feedback') || q1('.playfoot')) throw new Error('the Play screen should not carry the page footer or bottom buttons');
+  const pane = (panel: string) => q1(`[data-panel="${panel}"]`)!.parentElement as HTMLElement;
+  if (pane('turn-log').hidden || !pane('surroundings').hidden) throw new Error('the Log tab should be showing first');
+  await clickText('Map');
+  if (!pane('turn-log').hidden || pane('surroundings').hidden) throw new Error('the Map tab should swap the Log for the map');
+  await clickText('Log');
   if (!q1('[data-panel="actions"]')) throw new Error('How to play should return to the life in progress');
-  await clickText('Menu');
+  await clickLabel('Menu');
 
   // Settings: layout switch, save code out and in, erase
   await clickText('Settings');
@@ -572,7 +585,7 @@ console.log('flash screens seen:', flashes);
   if (!q1('[data-scene="pixel"] canvas') || q1('[data-scene="classic"]')) throw new Error('the pixel scene should be the default');
   if (blits < 1) throw new Error('the pixel scene never drew anything');
   if (!q1('.ptag.you')!.textContent!.includes('Deer')) throw new Error('the player name tag is missing');
-  await clickText('Menu');
+  await clickLabel('Menu');
   await clickText('Settings');
   await clickText('Classic view');
   if (savedAccount().settings.classicScene !== true) throw new Error('Classic view switch not saved');

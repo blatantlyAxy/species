@@ -1,5 +1,5 @@
 declare const __BUILD_DATE__: string;
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 export const BUILD_DATE: string = typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : 'dev';
 /** Where feedback goes. Leave empty to offer copy-to-clipboard only. */
 export const FEEDBACK_EMAIL = 'akshay.rathore06@gmail.com';

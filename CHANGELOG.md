@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 (17 Nov 2026)
+
+Far less scrolling. No game rules changed (the sim snapshot is unchanged).
+
+- **The Play screen fits one screen.** The page no longer scrolls during a life. Measured on a 390 by 700 phone it was 1.9 to 2.6 screens tall; it is now exactly one.
+  - The Turn log and the map share one area as **Log** and **Map** tabs. The Map tab shows a dot when a neighbouring place is wary or dangerous.
+  - One header row: Menu button, place name, season and turn, Guide button. The place's description moved to a tooltip.
+  - The four meters sit two across; the life stage moved next to the stats; the goal is capped at two lines.
+  - The pixel scene's height follows the screen's height; action hints are capped at two lines (three on tall screens).
+  - The page footer and the two buttons under the actions are gone from this screen.
+  - On very short screens (about 640 px tall and under) the busiest turns can still need a small scroll inside the screen.
+- **The prep screen is about one screen** (was 2.4): Stats and Mutations are tabs, the explainer is folded behind a link, a stat's upkeep line shows once you raise it, and Back and Be born stay pinned at the bottom.
+- Less empty space under every screen.
+
 ## 1.1.0 (17 Nov 2026)
 
 No game rules changed (the sim snapshot is unchanged).

@@ -363,6 +363,12 @@ Each species has a one-sentence win condition.
 
 **Action grid** — The action buttons shown two across (the default). Settings has "Actions as a single list" to go back to one column.
 
+**One-screen Play** (added in 1.2.0) — The Play screen fills the phone screen and the page does not scroll. From top to bottom: the header row (Menu, place, season and turn, Guide), the pixel scene, the event, the meters, the Log and Map tabs, and the actions. Only the tab area scrolls.
+
+**Log tab / Map tab** — The two views that share the space between the meters and the actions. Log is the Turn log panel; Map is the Surroundings panel with the minimap. A dot on the Map tab means a neighbouring place is wary (amber) or dangerous (red).
+
+**Stats tab / Mutations tab** — The two halves of the prep screen. Back and Be born stay at the bottom of both.
+
 **Pixel scene** (added in 1.1.0) — The drawn picture in the Environment panel: a 160 by 64 pixel canvas scaled up with hard edges. It shows your animal, up to four of your herd or pack, the mouse's nest, and the current threat, over a backdrop chosen by biome and season. It idles on a slow two-step bob, which stops when the tab is hidden or reduced motion is on.
 
 **Name tag** — The small label over an animal in the pixel scene: "You · Deer" over yours, the threat's name in red over the hunter.

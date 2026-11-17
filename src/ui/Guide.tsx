@@ -12,7 +12,7 @@ const SECTIONS: { id: string; title: string; items: [string, string][] }[] = [
   { id: 'turn', title: 'A turn', items: [
     ['Turn', 'Pick one action. The world then moves on: time passes, something may happen, and the next turn begins.'],
     ['Flashcard', 'The card that appears where the buttons are, showing the result of your action. Quiet results fade by themselves. Anything serious waits for a tap or Enter.'],
-    ['Turn log', 'Newest first: the turn that just began, the result of your last action, then earlier turns.'],
+    ['Log and Map', 'Two tabs share the middle of the screen. Log is the turn log, newest first: the turn that just began, the result of your last action, then earlier turns. Map is the minimap. A dot on the Map tab means danger next door.'],
     ['Keys', 'Number keys pick an action. Enter, Space or Esc dismiss a card.'],
   ] },
   { id: 'meters', title: 'Meters', items: [

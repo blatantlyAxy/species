@@ -148,7 +148,7 @@ export function App() {
   };
 
   return (
-    <div className="console">
+    <div className={`console ${screen === 'play' && run ? 'playing' : ''}`}>
       {(!accSaved || !runSaved) && (
         <div className="savewarn" role="alert">
           Your progress is not being saved on this device (storage is full or blocked). Copy a save code from Settings to keep it.
@@ -206,7 +206,7 @@ export function App() {
       )}
       {screen === 'guide' && <Guide onClose={() => setScreen(guideFrom)} closeLabel={guideFrom === 'play' ? 'Back to my life' : 'Back'} />}
       {screen === 'feedback' && <Feedback context={fbContext} onClose={() => setScreen(fbFrom)} />}
-      {screen !== 'feedback' && <VersionFooter onFeedback={openFeedback} />}
+      {screen !== 'feedback' && !(screen === 'play' && run) && <VersionFooter onFeedback={openFeedback} />}
     </div>
   );
 }
@@ -502,19 +502,28 @@ function Prep(p: {
     p.setInvest({ ...p.invest, [s]: target - d.baseStats[s] });
   };
   const bump = (s: Stat, delta: number) => setStat(s, d.baseStats[s] + (p.invest[s] ?? 0) + delta);
+  const [ptab, setPtab] = useState<'stats' | 'mutations'>('stats');
   const toggle = (t: TraitId) => {
     if (p.traits.includes(t)) p.setTraits(p.traits.filter((x) => x !== t));
     else if (!full) p.setTraits([...p.traits, t]);
   };
   return (
-    <div className="screen pad stack">
+    <div className="screen pad stack prep">
       <h2>{d.emoji} {d.name}</h2>
       <p className="small dim">Goal: {d.goal}</p>
-      <h3>Stats &middot; {left} Gene Points left</h3>
-      <p className="small dim">Raising a stat costs 1 Gene Point and makes you hungrier or more tired.</p>
-      <p className="small dim">Lower a stat to get a Gene Point back.</p>
-      <p className="small dim">Tap a bar to set a stat. The mark shows where you start; upkeep begins above it. Green is Gene Points spent, amber is refunded.</p>
-      <div className="row">
+      <div className="tabs preptabs" role="tablist" aria-label="Stats or mutations">
+        <button type="button" role="tab" aria-selected={ptab === 'stats'} className={`tab ${ptab === 'stats' ? 'on' : ''}`} onClick={() => setPtab('stats')}>Stats &middot; {left} left</button>
+        <button type="button" role="tab" aria-selected={ptab === 'mutations'} className={`tab ${ptab === 'mutations' ? 'on' : ''}`} onClick={() => setPtab('mutations')}>Mutations &middot; {p.traits.length}/{slots}</button>
+      </div>
+      <div className="stack preppane" hidden={ptab !== 'stats'}>
+      <h3 className="srhead">Stats &middot; {left} Gene Points left</h3>
+      <details className="explain small dim">
+        <summary>How stats and Gene Points work</summary>
+        <p>Raising a stat costs 1 Gene Point and makes you hungrier or more tired.</p>
+        <p>Lower a stat to get a Gene Point back.</p>
+        <p>Tap a bar to set a stat. The mark shows where you start; upkeep begins above it. Green is Gene Points spent, amber is refunded. A stat's upkeep is listed under its bar once you raise it.</p>
+      </details>
+      <div className="row presets">
         {PRESETS.map((pr) => {
           const inv = presetInvest(p.species, gp, pr);
           return (
@@ -546,13 +555,16 @@ function Prep(p: {
                 <StatBar label={STAT_LABEL[s]} base={d.baseStats[s]} cap={d.caps[s]} value={val} left={left} onSet={(v) => setStat(s, v)} />
                 <button className="btn mini center" disabled={!canUp} aria-label={`Raise ${STAT_LABEL[s]}`} title={upWhy || 'Raise: costs a Gene Point'} onClick={() => bump(s, 1)}>+</button>
               </div>
-              <div className="upkeep small dim">{rules.length ? `Upkeep above ${d.baseStats[s]}: ${rules.join('; ')}` : 'No upkeep'}</div>
+              <div className={`upkeep small dim ${add > 0 ? '' : 'quiet'}`}>{rules.length ? `Upkeep above ${d.baseStats[s]}: ${rules.join('; ')}` : 'No upkeep'}</div>
             </div>
           );
         })}
       </div>
       <p className="small dim">Upkeep now: {upkeepSummary(p.species, stats)}.</p>
-      <h3>Mutations (pick up to {slots})</h3>
+      </div>
+      <div className="stack preppane" hidden={ptab !== 'mutations'}>
+      <h3 className="srhead">Mutations (pick up to {slots})</h3>
+      <p className="small dim">Pick up to {slots}. Each one helps in its moment and has a price.</p>
       {full && <p className="small warnline">Slots full ({p.traits.length}/{slots}). Unpick one to swap.</p>}
       {TRAIT_IDS.map((t) => {
         const tr = TRAITS[t];
@@ -579,8 +591,11 @@ function Prep(p: {
           </button>
         );
       })}
-      <button className="btn primary center" onClick={p.onBorn}>{p.customising ? 'Done' : 'Be born'}</button>
-      <button className="btn center" onClick={p.onBack}>{p.customising ? 'Back to my birth' : 'Back'}</button>
+      </div>
+      <div className="stickybar">
+        <button className="btn center" onClick={p.onBack}>{p.customising ? 'Back to my birth' : 'Back'}</button>
+        <button className="btn primary center" onClick={p.onBorn}>{p.customising ? 'Done' : 'Be born'}</button>
+      </div>
     </div>
   );
 }
@@ -774,7 +789,7 @@ const SEASON_INDEX: Record<string, number> = { Spring: 0, Summer: 1, Autumn: 2, 
 const FOE_SPRITE: Record<string, SpriteId> = { hawk: 'hawk', fox: 'fox', wolf: 'wolf', rival: 'wolf' };
 const FOE_TAG: Record<string, string> = { hawk: 'Hawk', fox: 'Fox', wolf: 'Wolf pack', rival: 'Rival' };
 
-function EnvironmentPanel(p: { run: RunState; view: RunView; classic: boolean }) {
+function EnvironmentPanel(p: { run: RunState; view: RunView; classic: boolean; onMenu: () => void; onGuide: () => void }) {
   const { run, view } = p;
   const pixel = !p.classic && canDrawPixels();
   const foe = view.event?.kind === 'threat' ? view.event.pred : undefined;
@@ -783,12 +798,12 @@ function EnvironmentPanel(p: { run: RunState; view: RunView; classic: boolean })
   const rep = run.report;
   return (
     <div className={`scene ${view.biome} ${pixel ? 'haspixel' : ''}`} data-panel="environment">
-      <div className="topline">
-        <span>{view.seasonName} &middot; Turn {view.turn}/{view.maxTurns}</span>
-        <span>{view.stage}</span>
+      <div className="playbar">
+        <button className="barbtn" aria-label="Menu" title="Menu (your life is saved)" onClick={p.onMenu}>☰</button>
+        <div className="place" title={view.blurb}>{view.locName}</div>
+        <div className="when">{view.seasonName} &middot; Turn {view.turn}/{view.maxTurns}</div>
+        <button className="barbtn" aria-label="Guide" title="How to play" onClick={p.onGuide}>?</button>
       </div>
-      <div className="place">{view.locName}</div>
-      <div className="small" style={{ opacity: 0.85 }}>{view.blurb}</div>
       {pixel ? (
         <PixelScene
           spec={{
@@ -854,6 +869,7 @@ function MetersPanel(p: { view: RunView }) {
         <Bar cls="safe" label="Safety" value={view.safety} max={100} />
       </div>
       <div className="stats">
+        <span className="stage">{view.stage}</span>
         {STATS.map((s) => <span key={s}>{STAT_LABEL[s].slice(0, 3)} <b>{view.stats[s]}</b></span>)}
       </div>
       <div className="goal">Goal: {view.goalLine}{view.nest ? ` Nest: ${view.nest.pups} pups, ${view.nest.turnsLeft} turns to wean.` : ''}</div>
@@ -873,6 +889,7 @@ function SurroundingsPanel(p: { view: RunView; emoji: string; canTravel: boolean
   const [sightOpen, setSightOpen] = useState(false);
   return (
     <div className="look" data-panel="surroundings">
+      <div className="lookline">
       <span className="dim">{view.foodHere}.</span>{' '}
       <button type="button" className="linkbtn sightbtn" aria-expanded={sightOpen} onClick={() => setSightOpen(!sightOpen)}>Sight: tier {view.tier} of 3</button>
       {sightOpen && (
@@ -880,8 +897,9 @@ function SurroundingsPanel(p: { view: RunView; emoji: string; canTravel: boolean
           {SIGHT_HELP[view.tier]} Sight grows with account level, mastery of this species, high Senses, Keen Nose and a fuller codex.
         </div>
       )}
+      {p.canTravel && <span className="dim"> Tap a place to travel.</span>}
+      </div>
       <Minimap map={view.map} emoji={p.emoji} canTravel={p.canTravel} onTravel={p.onTravel} />
-      {p.canTravel && <div className="small dim maphint">Tap a neighbouring place to travel there.</div>}
       <div className="nb">
         {view.tier > 0 && view.neighbours.map((n) => (
           <span key={n.id}>
@@ -948,6 +966,10 @@ function Play(p: {
   const [leaving, setLeaving] = useState(false);
   const [cardH, setCardH] = useState(0);
   const actionsRef = useRef<HTMLDivElement>(null);
+  // One screen, no page scroll: the Turn log and the map share the space between the meters and the actions.
+  const [tab, setTab] = useState<'log' | 'map'>('log');
+  const tabBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (tabBodyRef.current) tabBodyRef.current.scrollTop = 0; }, [run.turnsTaken, tab]);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cardPending = !!rep && rep.turn > 0 && acked < run.turnsTaken;
@@ -1027,19 +1049,27 @@ function Play(p: {
     return () => window.removeEventListener('keydown', onKey);
   }, [cardPending, leaving, hold, run.ended, run.event, picking, view.actions, choose, doAct, dismiss]);
 
+  const mapAlert = shownView.neighbours.some((n) => n.danger === 'dangerous') ? 'dangerous'
+    : shownView.neighbours.some((n) => n.danger === 'wary') ? 'wary' : null;
   return (
-    <>
-      <div className="screen">
-        <EnvironmentPanel run={shown} view={shownView} classic={p.account.settings.classicScene} />
-        <TurnLogPanel run={shown} />
+    <div className="screen playshell">
+      <EnvironmentPanel run={shown} view={shownView} classic={p.account.settings.classicScene} onMenu={p.onMenu} onGuide={p.onGuide} />
+      <MetersPanel view={shownView} />
+      <div className="tabs" role="tablist" aria-label="Turn log or map">
+        <button type="button" role="tab" aria-selected={tab === 'log'} className={`tab ${tab === 'log' ? 'on' : ''}`} onClick={() => setTab('log')}>Log</button>
+        <button type="button" role="tab" aria-selected={tab === 'map'} className={`tab ${tab === 'map' ? 'on' : ''}`} onClick={() => setTab('map')}>
+          Map{mapAlert && <span className={`tabdot ${mapAlert}`} aria-label={`a neighbouring place is ${mapAlert}`} />}
+        </button>
       </div>
-
-      <div className="screen">
-        <MetersPanel view={shownView} />
-        <SurroundingsPanel view={shownView} emoji={SPECIES[run.species].emoji}
-          canTravel={!cardPending && !run.ended && view.actions.some((a) => a.id === 'travel' && !a.disabled)}
-          onTravel={(id) => doAct('travel', id)} />
-        {activeTip && (
+      <div className="tabbody" ref={tabBodyRef}>
+        <div hidden={tab !== 'log'}><TurnLogPanel run={shown} /></div>
+        <div hidden={tab !== 'map'}>
+          <SurroundingsPanel view={shownView} emoji={SPECIES[run.species].emoji}
+            canTravel={!cardPending && !run.ended && view.actions.some((a) => a.id === 'travel' && !a.disabled)}
+            onTravel={(id) => doAct('travel', id)} />
+        </div>
+      </div>
+      {activeTip && (
           <TipStrip text={tipText(activeTip, tipCtx)} onGotIt={() => onTipSeen(activeTip)} onHide={p.onHideTips} onGuide={p.onGuide} />
         )}
         <div className={`actions ${cardPending ? 'hascard' : ''} ${!cardPending && !run.ended && !p.account.settings.actionList ? 'grid2' : ''}`} data-panel="actions" ref={actionsRef}
@@ -1077,11 +1107,6 @@ function Play(p: {
           )}
         </div>
       </div>
-      <div className="row playfoot">
-        <button className="btn center" onClick={p.onMenu}>Menu (your life is saved)</button>
-        <button className="btn center" onClick={p.onGuide}>How to play</button>
-      </div>
-    </>
   );
 }
 
